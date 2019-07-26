@@ -58,18 +58,8 @@ export function run<A>(parser: Parser<A>, source: string): A {
   try {
     return parser(source, new Context());
   } catch (e) {
-    if (e instanceof Err) {
-      throw new ParseError(e);
-    } else {
-      throw e;
-    }
+    throw new ParseError(e);
   }
-}
-export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
-  return (source, context) => {
-    const parser = getParser();
-    return parser(source, context);
-  };
 }
 
 export function seq<A extends Array<any>, B>(
@@ -87,7 +77,7 @@ export function seq<A extends Array<any>, B>(
 }
 
 export function skipSeq(...parsers: Parser<unknown>[]): Parser<void> {
-  return seq(() => {}, ...parsers);
+  return oneOf(attempt(seq(() => {}, ...parsers)), noop);
 }
 
 export function map<A, B>(
@@ -113,20 +103,36 @@ export function map<A, B>(
   };
 }
 
+export function mapWithRange<A, B>(
+  parser: Parser<A>,
+  f: (value: A, range: Range, fail: (message: string) => never) => B
+): Parser<B> {
+  return (source, context) => {
+    const childContext = new ChildContext(context);
+    const start = calcPosition(source, childContext.offset);
+    const a = parser(source, childContext);
+    const end = calcPosition(source, childContext.offset - 1);
+    try {
+      const value = f(a, { start, end }, message => {
+        throw new Err(source, context, message);
+      });
+      childContext.commit();
+      return value;
+    } catch (e) {
+      if (e instanceof Err) {
+        throw e;
+      } else {
+        throw new Err(source, context, e.message);
+      }
+    }
+  };
+}
+
 export const end: Parser<void> = (source, context) => {
   if (source.length !== context.offset) {
     throw new Err(source, context, `Not the end of source`);
   }
 };
-
-export function attempt<A>(parser: Parser<A>): Parser<A> {
-  return (source, context) => {
-    const childContext = new ChildContext(context);
-    const a = parser(source, childContext);
-    childContext.commit();
-    return a;
-  };
-}
 
 export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   return (source, context) => {
@@ -152,8 +158,29 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   };
 }
 
+export function attempt<A>(parser: Parser<A>): Parser<A> {
+  return (source, context) => {
+    const childContext = new ChildContext(context);
+    const a = parser(source, childContext);
+    childContext.commit();
+    return a;
+  };
+}
+
+export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
+  return (source, context) => {
+    let parser;
+    try {
+      parser = getParser();
+    } catch (e) {
+      throw new Err(source, context, e.message);
+    }
+    return parser(source, context);
+  };
+}
+
 export function match(regexString: string): Parser<string> {
-  const regexp = new RegExp(regexString, "y");
+  const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
@@ -166,7 +193,20 @@ export function match(regexString: string): Parser<string> {
     }
   };
 }
-export function expectString(s: string, name: string): Parser<void> {
+
+export function skip(regexString: string): Parser<void> {
+  const regexp = new RegExp(regexString, "smy");
+  return (source, context) => {
+    regexp.lastIndex = context.offset;
+    const result = regexp.exec(source);
+    if (result) {
+      const s = result[0];
+      context.consume(s.length);
+    }
+  };
+}
+
+export function expectString(s: string, name = "string"): Parser<void> {
   return (source, context) => {
     if (source.startsWith(s, context.offset)) {
       context.consume(s.length);
@@ -193,27 +233,13 @@ export function stringBefore(regexString: string): Parser<string> {
   };
 }
 
-export function mapWithRange<A, B>(
-  parser: Parser<A>,
-  map: (value: A, range: Range) => B
-): Parser<B> {
-  return (source, context) => {
-    const start = calcPosition(source, context.offset);
-    const a = parser(source, context);
-    const end = calcPosition(source, context.offset - 1);
-    return map(a, { start, end });
-  };
-}
-
-export function skip(regexString: string): Parser<void> {
-  return map(match(regexString), s => {});
-}
+export const noop: Parser<void> = _ => {};
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;
 }
 
-export function assertConsume<A>(parser: Parser<A>): Parser<A> {
+export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const originalOffset = context.offset;
     const a = parser(source, context);
@@ -230,7 +256,7 @@ export function many<A>(itemParser: Parser<A>): Parser<A[]> {
       (head, tail) => {
         return [head, ...tail];
       },
-      assertConsume(itemParser),
+      assertConsumed(itemParser),
       lazy(() => many(itemParser))
     ),
     constant([])
