@@ -1,2 +1,5 @@
 node_modules
 work
+coverage
+.nyc_output
+dist

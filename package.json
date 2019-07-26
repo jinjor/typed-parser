@@ -2,20 +2,23 @@
   "name": "typed-parser",
   "version": "1.0.0",
   "description": "A parser library for TypeScript",
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "test": "jest"
-  },
-  "jest": {
-    "preset": "ts-jest"
+    "build": "tsc -p .",
+    "test": "nyc mocha test/*.spec.ts -r ts-node/register -r source-map-support/register",
+    "prepublishOnly": "npm run build"
   },
   "author": "Yosuke Torii",
   "license": "MIT",
   "devDependencies": {
-    "@types/jest": "^24.0.15",
+    "@types/mocha": "^5.2.7",
     "@types/node": "^12.6.8",
-    "jest": "^24.8.0",
-    "ts-jest": "^24.0.2",
+    "mocha": "^6.2.0",
+    "nyc": "^14.1.1",
+    "source-map-support": "^0.5.12",
+    "ts-node": "^8.3.0",
     "typescript": "^3.5.3"
-  }
+  },
+  "dependencies": {}
 }

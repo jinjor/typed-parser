@@ -92,12 +92,17 @@ export function skipSeq(...parsers: Parser<unknown>[]): Parser<void> {
 
 export function map<A, B>(
   p: Parser<A>,
-  f: (a: A, source: string, context: Context) => B
+  f: (a: A, fail: (message: string) => never) => B
 ): Parser<B> {
   return (source, context) => {
-    const a = p(source, context);
+    const childContext = new ChildContext(context);
+    const a = p(source, childContext);
     try {
-      return f(a, source, context);
+      const value = f(a, message => {
+        throw new Err(source, context, message);
+      });
+      childContext.commit();
+      return value;
     } catch (e) {
       if (e instanceof Err) {
         throw e;
@@ -283,19 +288,19 @@ export function keyword(s: string): Parser<void> {
 }
 
 export function int(regexString: string): Parser<number> {
-  return map(match(regexString), (s, source, context) => {
+  return map(match(regexString), (s, fail) => {
     const n = parseInt(s);
     if (isNaN(n)) {
-      throw new Err(source, context, `${s} is not an integer`);
+      fail(`${s} is not an integer`);
     }
     return n;
   });
 }
 export function float(regexString: string): Parser<number> {
-  return map(match(regexString), (s, source, context) => {
+  return map(match(regexString), (s, fail) => {
     const n = parseFloat(s);
     if (isNaN(n)) {
-      throw new Err(source, context, `${s} is not a float`);
+      fail(`${s} is not a float`);
     }
     return n;
   });

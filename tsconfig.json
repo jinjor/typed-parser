@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "module": "esNext",
+    "module": "commonjs",
     "lib": ["es7", "dom"],
-    "types": [],
+    "types": ["node", "mocha"],
     "pretty": true,
     "noImplicitAny": true,
     "strictNullChecks": false,
@@ -15,8 +15,9 @@
     "listFiles": false,
     "preserveWatchOutput": true,
     "inlineSourceMap": true,
-    "inlineSources": true
+    "inlineSources": true,
+    "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": []
+  "exclude": ["node_modules", "**/*.spec.ts"]
 }
