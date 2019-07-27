@@ -18,7 +18,12 @@ import {
   Range,
   mapWithRange,
   float,
-  keyword
+  keyword,
+  stringBeforeEndOr,
+  stringUntil,
+  constant,
+  todo,
+  mapKeyword
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -42,7 +47,7 @@ describe("Examples", () => {
     );
     const template: Parser<Item[]> = seq(
       all => all,
-      many(oneOf<Item>(variable, stringBefore("{{"))),
+      many(oneOf<Item>(variable, stringBeforeEndOr("{{"))),
       end
     );
     const ast = run(template, " hogehoge {{ aa.bb }} hoge hoge ");
@@ -51,10 +56,23 @@ describe("Examples", () => {
 
   it("JSON", () => {
     const num = float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?");
-    const boolValue = (s: string, b: boolean) => map(keyword(s), _ => b);
-    const bool = oneOf(boolValue("true", true), boolValue("false", false));
-    // TODO: escape
-    const str = seq((_, s) => s, symbol('"'), stringBefore('"'), symbol('"'));
+    const bool = oneOf(mapKeyword("true", true), mapKeyword("false", false));
+    const escape = oneOf(
+      mapKeyword('\\"', '"'),
+      mapKeyword("\\\\", "\\"),
+      mapKeyword("\\/", "/"),
+      mapKeyword("\\b", "\b"),
+      mapKeyword("\\f", "\f"),
+      mapKeyword("\\n", "\n"),
+      mapKeyword("\\r", "\r"),
+      mapKeyword("\\t", "\t")
+    );
+    const strInner: Parser<string> = seq(
+      (s, tail) => s + tail,
+      stringBefore('[\\\\"]'),
+      oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
+    );
+    const str = seq((_, s) => s, symbol('"'), strInner, symbol('"'));
     const itemSep = skipSeq(_, symbol(","), _);
     const fieldSep = skipSeq(_, symbol(":"), _);
     const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val));

@@ -20,5 +20,6 @@
     "ts-node": "^8.3.0",
     "typescript": "^3.5.3"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "test": "\r\n\\\""
 }

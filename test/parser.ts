@@ -24,7 +24,11 @@ import {
   noop,
   many,
   sepBy,
-  sepBy1
+  sepBy1,
+  stringBeforeEndOr,
+  stringUntil,
+  todo,
+  mapKeyword
 } from "../src/index";
 import * as assert from "assert";
 
@@ -116,12 +120,30 @@ describe("Core", () => {
   });
   it("stringBefore", () => {
     succeed(stringBefore("a"), "a", "");
-    succeed(stringBefore("a"), "", "");
-    succeed(stringBefore("a"), "__a", "__");
-    succeed(stringBefore("a"), "__", "__");
-    succeed(stringBefore("a+"), "whoa", "who");
-    succeed(stringBefore("a"), "\na", "\n");
-    succeed(stringBefore("a"), "\nb", "\nb");
+    succeed(stringBefore("a"), "_a", "_");
+    succeed(stringBefore("a+"), "aa", "");
+    succeed(seq(_ => {}, stringBefore("a"), match("ab")), "ab");
+    fail(stringBefore("a"), "b");
+    fail(stringBefore("a"), "");
+    fail(seq(_ => {}, stringBefore("a"), match("b")), "ab", 0);
+  });
+  it("stringBeforeEndOr", () => {
+    succeed(stringBeforeEndOr("a"), "a", "");
+    succeed(stringBeforeEndOr("a"), "", "");
+    succeed(stringBeforeEndOr("a"), "__a", "__");
+    succeed(stringBeforeEndOr("a"), "__", "__");
+    succeed(stringBeforeEndOr("a+"), "whoa", "who");
+    succeed(stringBeforeEndOr("a"), "\na", "\n");
+    succeed(stringBeforeEndOr("a"), "\nb", "\nb");
+  });
+  it("stringUntil", () => {
+    succeed(stringUntil("a"), "a", "");
+    succeed(stringUntil("a"), "_a", "_");
+    succeed(stringUntil("a+"), "aa", "");
+    succeed(seq(_ => {}, stringUntil("a"), match("b")), "ab");
+    fail(stringUntil("a"), "b");
+    fail(stringUntil("a"), "");
+    fail(seq(_ => {}, stringUntil("a"), match("ab")), "ab", 1);
   });
   it("noop", () => {
     succeed(noop, "");
@@ -129,6 +151,16 @@ describe("Core", () => {
   it("constant", () => {
     succeed(constant("a"), "", "a");
     succeed(constant(1), "a", 1);
+  });
+  it("todo", () => {
+    let succeeded = false;
+    try {
+      todo("foo");
+      succeeded = true;
+    } catch (e) {
+      assert(e.message.includes("foo"));
+    }
+    assert(!succeeded, "todo() Unexpectedly succeed.");
   });
   it("assertConsumed", () => {
     succeed(assertConsumed(match("a")), "aa", "a");
@@ -251,6 +283,11 @@ describe("Core", () => {
     succeed(keyword("foo"), "foo");
     fail(keyword("foo"), " foo");
     fail(keyword("foo"), "");
+  });
+  it("mapKeyword", () => {
+    succeed(mapKeyword("foo", 1), "foo", 1);
+    fail(mapKeyword("foo", 1), " foo");
+    fail(mapKeyword("foo", 1), "");
   });
   it("int", () => {
     succeed(int("[0-9]"), "1", 1);

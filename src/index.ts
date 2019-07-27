@@ -221,6 +221,32 @@ export function stringBefore(regexString: string): Parser<string> {
   return (source, context) => {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
+    if (!result) {
+      throw new Err(source, context, `Did not match "${regexString}"`);
+    }
+    const s = source.slice(context.offset, result.index);
+    context.consume(s.length);
+    return s;
+  };
+}
+export function stringUntil(regexString: string): Parser<string> {
+  const regexp = new RegExp(regexString, "g");
+  return (source, context) => {
+    regexp.lastIndex = context.offset;
+    const result = regexp.exec(source);
+    if (!result) {
+      throw new Err(source, context, `Did not match "${regexString}"`);
+    }
+    const s = source.slice(context.offset, result.index);
+    context.consume(s.length + result[0].length);
+    return s;
+  };
+}
+export function stringBeforeEndOr(regexString: string): Parser<string> {
+  const regexp = new RegExp(regexString, "g");
+  return (source, context) => {
+    regexp.lastIndex = context.offset;
+    const result = regexp.exec(source);
     let index;
     if (result) {
       index = result.index;
@@ -237,6 +263,10 @@ export const noop: Parser<void> = _ => {};
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;
+}
+
+export function todo<A>(name: string): Parser<A> {
+  throw new Error(`Parser "${name}" is not implemented yet.`);
 }
 
 export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
@@ -311,6 +341,10 @@ export function symbol(s: string): Parser<void> {
 
 export function keyword(s: string): Parser<void> {
   return expectString(s, "keyword");
+}
+
+export function mapKeyword<A>(s: string, value: A): Parser<A> {
+  return map(expectString(s, "keyword"), _ => value);
 }
 
 export function int(regexString: string): Parser<number> {
