@@ -28,7 +28,6 @@ import {
 } from "../src/index";
 import * as assert from "assert";
 
-const _ = whitespace;
 function succeed<A>(parser: Parser<A>, source: string, expect?: A): void {
   const value = run(parser, source);
   if (expect !== undefined) {
@@ -161,7 +160,7 @@ describe("Core", () => {
   it("attempt", () => {
     const atA = seq((_, a) => a, symbol("@"), match("a"));
     succeed(oneOf(attempt(atA), constant("z")), "@b", "z");
-    fail(atA, "@b", 0);
+    fail(atA, "@b", 1);
     fail(oneOf(atA, constant("z")), "@b", 1);
   });
   it("lazy", () => {
@@ -239,7 +238,7 @@ describe("Core", () => {
     fail(
       sepBy1(symbol(","), attempt(seq(_ => 0, match("a"), match("b")))),
       "ac",
-      0
+      1
     );
     fail(sepBy1(symbol(","), seq(_ => 0, match("a"), match("b"))), "ac", 1);
   });

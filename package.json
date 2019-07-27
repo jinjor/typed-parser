@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p .",
-    "test": "nyc mocha test/*.spec.ts -r ts-node/register -r source-map-support/register",
+    "test": "nyc mocha test/*.ts -r ts-node/register -r source-map-support/register",
     "prepublishOnly": "npm run build"
   },
   "author": "Yosuke Torii",
