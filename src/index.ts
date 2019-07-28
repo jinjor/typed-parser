@@ -47,14 +47,9 @@ class OneOfError extends Err {
 }
 
 export class Context {
-  public error: Err = null;
   constructor(public offset = 0) {}
   consume(amount: number): void {
     this.offset += amount;
-  }
-  setError(error: Err): null {
-    this.error = error;
-    return null;
   }
 }
 
@@ -67,21 +62,21 @@ class ChildContext extends Context {
   }
 }
 
-export type Parser<A> = (source: string, context: Context) => A;
+export type Parser<A> = (source: string, context: Context) => A | Err;
 
 export function run<A>(parser: Parser<A>, source: string): A {
   const context = new Context();
-  let value;
+  let result: A | Err;
   try {
-    value = parser(source, context);
+    result = parser(source, context);
   } catch (e) {
-    context.error = new Err(context, e.message);
+    result = new Err(context, e.message);
   }
-  if (context.error) {
-    const message = context.error.message;
-    throw new ParseError(message, source, context.error.context);
+  if (result instanceof Err) {
+    const message = result.message;
+    throw new ParseError(message, source, result.context);
   }
-  return value;
+  return result;
 }
 
 export function seq<A extends Array<any>, B>(
@@ -92,11 +87,11 @@ export function seq<A extends Array<any>, B>(
     const values: any = [];
     for (let i = 0; i < parsers.length; i++) {
       const parser = parsers[i];
-      const value = parser(source, context);
-      if (context.error) {
-        return null;
+      const result = parser(source, context);
+      if (result instanceof Err) {
+        return result;
       }
-      values[i] = value;
+      values[i] = result;
     }
     return map(...values);
   };
@@ -114,92 +109,90 @@ export function $3<A>(_1: any, _2: any, a: A): A {
   return a;
 }
 
-export function skipSeq(...parsers: Parser<unknown>[]): Parser<void> {
-  return oneOf(attempt(seq(() => {}, ...parsers)), noop);
+export function skipSeq(...parsers: Parser<unknown>[]): Parser<null> {
+  return oneOf(attempt(seq(() => null, ...parsers)), noop);
 }
 
 export function map<A, B>(
-  p: Parser<A>,
-  f: (a: A, setError: (message: string) => null) => B
+  parser: Parser<A>,
+  f: (a: A, toError: (message: string) => Err) => B | Err
 ): Parser<B> {
   return (source, context) => {
     const childContext = new ChildContext(context);
-    const a = p(source, childContext);
-    if (childContext.error !== null) {
-      return context.setError(childContext.error);
+    const result = parser(source, childContext);
+    if (result instanceof Err) {
+      return result;
     }
-    let value;
+    let result2;
     try {
-      value = f(a, message => {
-        return context.setError(new Err(context, message));
+      result2 = f(result, function toError(message) {
+        return new Err(context, message);
       });
     } catch (e) {
-      context.error = new Err(context, e.message);
+      result2 = new Err(context, e.message);
     }
-    if (context.error) {
-      return null;
+    if (result2 instanceof Err) {
+      return result2;
     }
     childContext.commit();
-    return value;
+    return result2;
   };
 }
 
 export function mapWithRange<A, B>(
   parser: Parser<A>,
-  f: (value: A, range: Range, fail: (message: string) => void) => B
+  f: (value: A, range: Range, toError: (message: string) => Err) => B
 ): Parser<B> {
   return (source, context) => {
     const childContext = new ChildContext(context);
     const start = calcPosition(source, childContext.offset);
-    const a = parser(source, childContext);
-    if (childContext.error !== null) {
-      return context.setError(childContext.error);
+    const result = parser(source, childContext);
+    if (result instanceof Err) {
+      return result;
     }
     const end = calcPosition(source, childContext.offset - 1);
-    let value;
+    let result2;
     try {
-      value = f(a, { start, end }, message => {
-        context.error = new Err(context, message);
+      result2 = f(result, { start, end }, function toError(message) {
+        return new Err(context, message);
       });
     } catch (e) {
-      context.error = new Err(context, e.message);
+      result2 = new Err(context, e.message);
     }
-    if (context.error) {
-      return null;
+    if (result2 instanceof Err) {
+      return result2;
     }
     childContext.commit();
-    return value;
+    return result2;
   };
 }
 
-export const end: Parser<void> = (source, context) => {
+export const end: Parser<null> = (source, context) => {
   if (source.length !== context.offset) {
-    context.error = new Err(context, `Not the end of source`);
+    return new Err(context, `Not the end of source`);
   }
+  return null;
 };
 
 export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   return (source, context) => {
     const errors = [];
-    for (const p of parsers) {
+    for (const parser of parsers) {
       const originalOffset = context.offset;
-      const value = p(source, context);
-      if (!context.error) {
-        return value;
+      const result = parser(source, context);
+      if (!(result instanceof Err)) {
+        return result;
       }
       if (originalOffset === context.offset) {
-        errors.push(context.error);
-        context.error = null;
+        errors.push(result);
       } else {
-        return null;
+        return result;
       }
     }
-    return context.setError(
-      new OneOfError(
-        context,
-        `Did not match any of ${parsers.length} parsers`,
-        errors
-      )
+    return new OneOfError(
+      context,
+      `Did not match any of ${parsers.length} parsers`,
+      errors
     );
   };
 }
@@ -207,22 +200,20 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
 export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const childContext = new ChildContext(context);
-    const a = parser(source, childContext);
-    if (childContext.error !== null) {
-      return context.setError(childContext.error);
+    const result = parser(source, childContext);
+    if (result instanceof Err) {
+      return result;
     }
     childContext.commit();
-    return a;
+    return result;
   };
 }
 
 export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
   return (source, context) => {
-    let parser;
-    try {
-      parser = getParser();
-    } catch (e) {
-      return context.setError(new Err(context, e.message));
+    let parser = getParser();
+    if (!parser) {
+      throw new Error("Could not get parser");
     }
     return parser(source, context);
   };
@@ -238,29 +229,29 @@ export function match(regexString: string): Parser<string> {
       context.consume(s.length);
       return s;
     } else {
-      return context.setError(
-        new Err(context, `Did not match "${regexString}"`)
-      );
+      return new Err(context, `Did not match "${regexString}"`);
     }
   };
 }
 
-export function skip(regexString: string): Parser<void> {
+export function skip(regexString: string): Parser<null> {
   const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
     regexp.lastIndex = context.offset;
     if (regexp.test(source)) {
       context.offset = regexp.lastIndex;
     }
+    return null;
   };
 }
 
-export function expectString(s: string, name = "string"): Parser<void> {
+export function expectString(s: string, name = "string"): Parser<null> {
   return (source, context) => {
     if (source.startsWith(s, context.offset)) {
       context.consume(s.length);
+      return null;
     } else {
-      context.setError(new Err(context, `Could not find ${name} "${s}"`));
+      return new Err(context, `Could not find ${name} "${s}"`);
     }
   };
 }
@@ -271,7 +262,7 @@ export function stringBefore(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.setError(new Err(context, `Did not match "${regexString}"`));
+      return new Err(context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length);
@@ -284,7 +275,7 @@ export function stringUntil(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.setError(new Err(context, `Did not match "${regexString}"`));
+      return new Err(context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length + result[0].length);
@@ -308,7 +299,7 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
   };
 }
 
-export const noop: Parser<void> = _ => {};
+export const noop: Parser<null> = _ => null;
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;
@@ -321,14 +312,14 @@ export function todo<A>(name: string): Parser<A> {
 export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const originalOffset = context.offset;
-    const a = parser(source, context);
-    if (context.error) {
-      return null;
+    const result = parser(source, context);
+    if (result instanceof Err) {
+      return result;
     }
     if (context.offset === originalOffset) {
-      return context.setError(new Err(context, "No string consumed"));
+      return new Err(context, "No string consumed");
     }
-    return a;
+    return result;
   };
 }
 
@@ -381,11 +372,11 @@ export function sepBy1<A>(
   );
 }
 
-export function symbol(s: string): Parser<void> {
+export function symbol(s: string): Parser<null> {
   return expectString(s, "symbol");
 }
 
-export function keyword(s: string): Parser<void> {
+export function keyword(s: string): Parser<null> {
   return expectString(s, "keyword");
 }
 
@@ -394,20 +385,20 @@ export function mapKeyword<A>(s: string, value: A): Parser<A> {
 }
 
 export function int(regexString: string): Parser<number> {
-  return map(match(regexString), (s, setError) => {
+  return map(match(regexString), (s, toError) => {
     const n = parseInt(s);
     if (isNaN(n)) {
-      return setError(`${s} is not an integer`);
+      return toError(`${s} is not an integer`);
     }
     return n;
   });
 }
 
 export function float(regexString: string): Parser<number> {
-  return map(match(regexString), (s, setError) => {
+  return map(match(regexString), (s, toError) => {
     const n = parseFloat(s);
     if (isNaN(n)) {
-      return setError(`${s} is not a float`);
+      return toError(`${s} is not a float`);
     }
     return n;
   });
