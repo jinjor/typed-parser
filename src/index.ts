@@ -1,9 +1,18 @@
 class Err {
   public offset: number;
-  public position: Position;
-  constructor(source: string, context: Context, public message: string) {
+  public _position: Position;
+  get position() {
+    if (!this._position) {
+      this._position = calcPosition(this.source, this.offset);
+    }
+    return this._position;
+  }
+  constructor(
+    private source: string,
+    context: Context,
+    public message: string
+  ) {
     this.offset = context.offset;
-    this.position = calcPosition(source, context.offset);
   }
 }
 

@@ -95,8 +95,8 @@ describe("Examples", () => {
       const source = readFileSync(file, "utf8");
       const s1 = Date.now();
       const ast = run(json, source);
-      const s2 = Date.now();
       const e1 = Date.now();
+      const s2 = Date.now();
       const ast2 = JSON.parse(source);
       const e2 = Date.now();
       console.log(`  typed-parser: ${e1 - s1}ms`);
