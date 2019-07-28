@@ -50,15 +50,19 @@ describe("Examples", () => {
   it("JSON", () => {
     const num = float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?");
     const bool = oneOf(mapKeyword("true", true), mapKeyword("false", false));
-    const escape = oneOf(
-      mapKeyword('\\"', '"'),
-      mapKeyword("\\\\", "\\"),
-      mapKeyword("\\/", "/"),
-      mapKeyword("\\b", "\b"),
-      mapKeyword("\\f", "\f"),
-      mapKeyword("\\n", "\n"),
-      mapKeyword("\\r", "\r"),
-      mapKeyword("\\t", "\t")
+    const escape = seq(
+      $2,
+      symbol("\\"),
+      oneOf(
+        mapKeyword('"', '"'),
+        mapKeyword("\\", "\\"),
+        mapKeyword("/", "/"),
+        mapKeyword("b", "\b"),
+        mapKeyword("f", "\f"),
+        mapKeyword("n", "\n"),
+        mapKeyword("r", "\r"),
+        mapKeyword("t", "\t")
+      )
     );
     const strInner: Parser<string> = seq(
       (s, tail) => s + tail,
@@ -66,8 +70,10 @@ describe("Examples", () => {
       oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
     );
     const str = seq($2, symbol('"'), strInner, symbol('"'));
-    const itemSep = skipSeq(symbol(","), _);
-    const fieldSep = skipSeq(symbol(":"), _);
+    // const itemSep = skipSeq(symbol(","), _);
+    // const fieldSep = skipSeq(symbol(":"), _);
+    const itemSep = match(",\\s*");
+    const fieldSep = match(":\\s*");
     const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val), _);
     function toObject(kvs: [string, unknown][]): object {
       return kvs.reduce((o, [k, v]) => ({ ...o, [k]: v }), {});
@@ -75,7 +81,7 @@ describe("Examples", () => {
     const object = braced("{", "}", map(sepBy(itemSep, field), toObject));
     const items = sepBy(itemSep, seq($1, lazy(() => val), _));
     const array = braced("[", "]", items);
-    const val: Parser<unknown> = oneOf<unknown>(object, array, num, bool, str);
+    const val: Parser<unknown> = oneOf<unknown>(object, array, str, num, bool);
     const json = seq($2, _, val, _, end);
 
     compareJSON(__dirname + "/../package.json");
