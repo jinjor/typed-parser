@@ -8,6 +8,7 @@ class Err {
     this.position = calcPosition(source, context.offset);
   }
 }
+
 function calcPosition(source: string, offset: number): Position {
   const sub = source.slice(0, offset + 1);
   const lines = sub.split("\n");
@@ -15,14 +16,17 @@ function calcPosition(source: string, offset: number): Position {
   const column = lines[lines.length - 1].length;
   return { row, column };
 }
+
 export type Position = {
   row: number;
   column: number;
 };
+
 export type Range = {
   start: Position;
   end: Position;
 };
+
 class OneOfError extends Err {
   constructor(
     source: string,
@@ -33,6 +37,7 @@ class OneOfError extends Err {
     super(source, context, message);
   }
 }
+
 export class ParseError extends Error {
   constructor(public error: Err) {
     super(error.message + "\n" + JSON.stringify(error, null, 2));
@@ -45,6 +50,7 @@ export class Context {
     this.offset += amount;
   }
 }
+
 class ChildContext extends Context {
   constructor(private parent: Context) {
     super(parent.offset);
@@ -53,7 +59,9 @@ class ChildContext extends Context {
     this.parent.offset = this.offset;
   }
 }
+
 export type Parser<A> = (source: string, context: Context) => A;
+
 export function run<A>(parser: Parser<A>, source: string): A {
   try {
     return parser(source, new Context());
@@ -74,6 +82,18 @@ export function seq<A extends Array<any>, B>(
     }
     return map(...values);
   };
+}
+
+export function $1<A>(a: A): A {
+  return a;
+}
+
+export function $2<A>(_1: any, a: A): A {
+  return a;
+}
+
+export function $3<A>(_1: any, _2: any, a: A): A {
+  return a;
 }
 
 export function skipSeq(...parsers: Parser<unknown>[]): Parser<void> {
@@ -297,13 +317,7 @@ function nextItem<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A> {
-  return seq(
-    (_, item) => {
-      return item;
-    },
-    attempt(separator),
-    itemParser
-  );
+  return seq($2, attempt(separator), itemParser);
 }
 
 export function sepBy<A>(
@@ -356,6 +370,7 @@ export function int(regexString: string): Parser<number> {
     return n;
   });
 }
+
 export function float(regexString: string): Parser<number> {
   return map(match(regexString), (s, fail) => {
     const n = parseFloat(s);
@@ -365,4 +380,15 @@ export function float(regexString: string): Parser<number> {
     return n;
   });
 }
+
 export const whitespace = skip("\\s*");
+
+export const _ = whitespace;
+
+export function braced<A>(
+  start: string,
+  end: string,
+  parser: Parser<A>
+): Parser<A> {
+  return seq((_, __, value) => value, symbol(start), _, parser, _, symbol(end));
+}

@@ -1,10 +1,8 @@
 import {
   seq,
   map,
-  whitespace,
   end,
   match,
-  int,
   symbol,
   oneOf,
   run,
@@ -18,22 +16,17 @@ import {
   Range,
   mapWithRange,
   float,
-  keyword,
   stringBeforeEndOr,
-  stringUntil,
   constant,
-  todo,
-  mapKeyword
+  mapKeyword,
+  $1,
+  $2,
+  _,
+  braced
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
 import * as assert from "assert";
-
-const _ = whitespace;
-
-function braced<A>(start: string, end: string, parser: Parser<A>): Parser<A> {
-  return seq((_, __, value) => value, symbol(start), _, parser, _, symbol(end));
-}
 
 describe("Examples", () => {
   it("template", () => {
@@ -46,12 +39,12 @@ describe("Examples", () => {
       mapWithRange(variableName, (name, range) => ({ name, range }))
     );
     const template: Parser<Item[]> = seq(
-      all => all,
+      $1,
       many(oneOf<Item>(variable, stringBeforeEndOr("{{"))),
       end
     );
-    const ast = run(template, " hogehoge {{ aa.bb }} hoge hoge ");
-    console.log(util.inspect(ast, { colors: true, depth: 10 }));
+    const ast = run(template, "blabla {{ foo.bar.baz }} blabla...");
+    console.error(util.inspect(ast, { colors: true, depth: 10 }));
   });
 
   it("JSON", () => {
@@ -72,22 +65,34 @@ describe("Examples", () => {
       stringBefore('[\\\\"]'),
       oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
     );
-    const str = seq((_, s) => s, symbol('"'), strInner, symbol('"'));
-    const itemSep = skipSeq(_, symbol(","), _);
-    const fieldSep = skipSeq(_, symbol(":"), _);
-    const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val));
+    const str = seq($2, symbol('"'), strInner, symbol('"'));
+    const itemSep = skipSeq(symbol(","), _);
+    const fieldSep = skipSeq(symbol(":"), _);
+    const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val), _);
     function toObject(kvs: [string, unknown][]): object {
       return kvs.reduce((o, [k, v]) => ({ ...o, [k]: v }), {});
     }
     const object = braced("{", "}", map(sepBy(itemSep, field), toObject));
-    const array = braced("[", "]", sepBy(itemSep, lazy(() => val)));
+    const items = sepBy(itemSep, seq($1, lazy(() => val), _));
+    const array = braced("[", "]", items);
     const val: Parser<unknown> = oneOf<unknown>(object, array, num, bool, str);
-    const json = seq((_, v) => v, _, val, _, end);
+    const json = seq($2, _, val, _, end);
 
-    const source = readFileSync(__dirname + "/../package.json", "utf8");
-    const ast = run(json, source);
-    console.log(util.inspect(ast, { colors: true, depth: 10 }));
+    compareJSON(__dirname + "/../package.json");
+    compareJSON(__dirname + "/../package-lock.json");
 
-    assert.deepEqual(JSON.parse(source), ast);
+    function compareJSON(file: string) {
+      console.log(`comparing ${file} ...`);
+      const source = readFileSync(file, "utf8");
+      const s1 = Date.now();
+      const ast = run(json, source);
+      const s2 = Date.now();
+      const e1 = Date.now();
+      const ast2 = JSON.parse(source);
+      const e2 = Date.now();
+      console.log(`  typed-parser: ${e1 - s1}ms`);
+      console.log(`  native parser: ${e2 - s2}ms`);
+      assert.deepEqual(ast2, ast);
+    }
   });
 });

@@ -1,7 +1,6 @@
 import {
   end,
   run,
-  whitespace,
   Parser,
   symbol,
   match,
@@ -28,7 +27,13 @@ import {
   stringBeforeEndOr,
   stringUntil,
   todo,
-  mapKeyword
+  mapKeyword,
+  _,
+  $2,
+  $1,
+  $3,
+  whitespace,
+  braced
 } from "../src/index";
 import * as assert from "assert";
 
@@ -42,6 +47,7 @@ function succeed<A>(parser: Parser<A>, source: string, expect?: A): void {
     );
   }
 }
+
 function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
   let value;
   let error;
@@ -58,11 +64,15 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
   }
   if (error.error.context.offset !== offset) {
     throw new Error(
-      `Offsets did not match: expected = ${offset}, actual = ${
-        error.error.context.offset
-      }, source = ${source}`
+      `Offsets did not match: expected = ${offset}, actual = ${error.error.context.offset}, source = ${source}`
     );
   }
+}
+
+function throwError<A>(message = ""): () => never {
+  return () => {
+    throw message;
+  };
 }
 
 describe("Core", () => {
@@ -84,12 +94,7 @@ describe("Core", () => {
   it("map", () => {
     succeed(map(match("a"), a => a.toUpperCase()), "a", "A");
     fail(map(match("a"), (_, fail) => fail("")), "a");
-    fail(
-      map(match("a"), _ => {
-        throw "";
-      }),
-      "a"
-    );
+    fail(map(match("a"), throwError()), "a");
   });
   it("mapWithRange", () => {
     succeed(mapWithRange(match("a"), a => a.toUpperCase()), "a", "A");
@@ -105,12 +110,7 @@ describe("Core", () => {
       }
     ]);
     fail(mapWithRange(match("a"), (_, __, fail) => fail("")), "a");
-    fail(
-      mapWithRange(match("a"), _ => {
-        throw "";
-      }),
-      "a"
-    );
+    fail(mapWithRange(match("a"), throwError()), "a");
   });
   it("expectString", () => {
     succeed(expectString("a"), "a");
@@ -169,28 +169,24 @@ describe("Core", () => {
     fail(assertConsumed(match("a*")), "");
   });
   it("seq", () => {
-    succeed(seq(a => a, match("a")), "ab", "a");
-    fail(seq(a => a, match("a"), end), "ab", 1);
+    succeed(seq($1, match("a"), noop), "ab", "a");
+    succeed(seq($2, noop, match("a"), noop), "ab", "a");
+    succeed(seq($3, noop, noop, match("a"), noop), "ab", "a");
+    fail(seq($1, match("a"), end), "ab", 1);
+    fail(seq(throwError(), match("a"), end), "ab", 1);
   });
   it("skipSeq", () => {
-    succeed(
-      seq((_, a) => a, skipSeq(symbol("!"), symbol("?")), match("a")),
-      "!?a",
-      "a"
-    );
-    succeed(
-      seq((_, a) => a, skipSeq(symbol("!"), symbol("?")), symbol("!")),
-      "!a"
-    );
+    succeed(seq($2, skipSeq(symbol("!"), symbol("?")), match("a")), "!?a", "a");
+    succeed(seq($2, skipSeq(symbol("!"), symbol("?")), symbol("!")), "!a");
   });
   it("oneOf", () => {
     succeed(oneOf(match("a"), match("b")), "a", "a");
     succeed(oneOf(match("a"), match("b")), "b", "b");
     fail(oneOf(match("a"), match("b")), "c");
-    fail(oneOf(seq(a => a, match("a"), match("a")), match("ab")), "ab", 1);
+    fail(oneOf(seq($1, match("a"), match("a")), match("ab")), "ab", 1);
   });
   it("attempt", () => {
-    const atA = seq((_, a) => a, symbol("@"), match("a"));
+    const atA = seq($2, symbol("@"), match("a"));
     succeed(oneOf(attempt(atA), constant("z")), "@b", "z");
     fail(atA, "@b", 1);
     fail(oneOf(atA, constant("z")), "@b", 1);
@@ -202,12 +198,7 @@ describe("Core", () => {
       seq((h, t) => [h, ...t], int("[0-9]"), lazy(() => nums))
     );
     succeed(nums, "123", [1, 2, 3]);
-    fail(
-      lazy(() => {
-        throw "";
-      }),
-      ""
-    );
+    fail(lazy(throwError()), "");
   });
   it("many", () => {
     succeed(many(int("[0-9]")), "123a", [1, 2, 3]);
@@ -229,11 +220,7 @@ describe("Core", () => {
       1,
       2
     ]);
-    succeed(
-      sepBy(seq(_ => {}, symbol("!"), symbol("?")), int("[0-9]")),
-      "1!2",
-      [1]
-    );
+    succeed(sepBy(skipSeq(symbol("!"), symbol("?")), int("[0-9]")), "1!2", [1]);
     succeed(sepBy(skipSeq(symbol("!"), symbol("?")), int("[0-9]")), "1!?2", [
       1,
       2
@@ -258,11 +245,9 @@ describe("Core", () => {
       1,
       2
     ]);
-    succeed(
-      sepBy1(seq(_ => {}, symbol("!"), symbol("?")), int("[0-9]")),
-      "1!2",
-      [1]
-    );
+    succeed(sepBy1(skipSeq(symbol("!"), symbol("?")), int("[0-9]")), "1!2", [
+      1
+    ]);
     succeed(sepBy1(skipSeq(symbol("!"), symbol("?")), int("[0-9]")), "1!?2", [
       1,
       2
@@ -301,5 +286,22 @@ describe("Core", () => {
     fail(float("[0-9]"), " 1");
     fail(float("[1-9]"), "0.5");
     fail(float("a"), "a");
+  });
+  it("whitespace", () => {
+    succeed(seq($2, whitespace, int("[0-9]")), " \t\r\n1", 1);
+    succeed(seq($2, _, int("[0-9]")), " \t\r\n1", 1);
+  });
+  it("braced", () => {
+    succeed(braced("[", "]", int("[0-9]")), "[1]", 1);
+    succeed(braced("[", "]", int("[0-9]")), "[ 1]", 1);
+    succeed(braced("[", "]", int("[0-9]")), "[1 ]", 1);
+    succeed(braced("[", "]", int("[0-9]")), "[ 1 ]", 1);
+    succeed(
+      seq((a, b) => [a, b], braced("[[", "]]", int("[0-9]")), int("[0-9]")),
+      "[[ 1 ]]2",
+      [1, 2]
+    );
+    fail(braced("[", "]", int("[0-9]")), "[ 11 ]", 3);
+    fail(braced("[", "]", int("[0-9]")), "[ 1 1 ]", 4);
   });
 });
