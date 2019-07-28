@@ -245,10 +245,8 @@ export function skip(regexString: string): Parser<void> {
   const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
     regexp.lastIndex = context.offset;
-    const result = regexp.exec(source);
-    if (result) {
-      const s = result[0];
-      context.consume(s.length);
+    if (regexp.test(source)) {
+      context.offset = regexp.lastIndex;
     }
   };
 }

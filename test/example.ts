@@ -22,7 +22,8 @@ import {
   $1,
   $2,
   _,
-  braced
+  braced,
+  skip
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -70,13 +71,15 @@ describe("Examples", () => {
       oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
     );
     const str = seq($2, symbol('"'), strInner, symbol('"'));
-    // const itemSep = skipSeq(symbol(","), _);
-    // const fieldSep = skipSeq(symbol(":"), _);
-    const itemSep = match(",\\s*");
-    const fieldSep = match(":\\s*");
+    const itemSep = skip(",\\s*");
+    const fieldSep = skip(":\\s*");
     const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val), _);
     function toObject(kvs: [string, unknown][]): object {
-      return kvs.reduce((o, [k, v]) => ({ ...o, [k]: v }), {});
+      const obj: any = {};
+      for (let [k, v] of kvs) {
+        obj[k] = v;
+      }
+      return obj;
     }
     const object = braced("{", "}", map(sepBy(itemSep, field), toObject));
     const items = sepBy(itemSep, seq($1, lazy(() => val), _));
