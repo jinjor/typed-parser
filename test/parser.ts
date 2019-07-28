@@ -76,6 +76,13 @@ function throwError<A>(message = ""): () => never {
 }
 
 describe("Core", () => {
+  it("run", () => {
+    try {
+      run(throwError(), "");
+    } catch (e) {
+      assert(e instanceof ParseError);
+    }
+  });
   it("end", () => {
     succeed(end, "");
     fail(end, " ");
@@ -93,6 +100,7 @@ describe("Core", () => {
   });
   it("map", () => {
     succeed(map(match("a"), a => a.toUpperCase()), "a", "A");
+    fail(map(match("a"), a => a.toUpperCase()), "b");
     fail(map(match("a"), (_, fail) => fail("")), "a");
     fail(map(match("a"), throwError()), "a");
   });
@@ -109,6 +117,7 @@ describe("Core", () => {
         end: { row: 2, column: 2 }
       }
     ]);
+    fail(mapWithRange(match("a"), a => a.toUpperCase()), "b");
     fail(mapWithRange(match("a"), (_, __, fail) => fail("")), "a");
     fail(mapWithRange(match("a"), throwError()), "a");
   });

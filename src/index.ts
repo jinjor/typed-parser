@@ -1,7 +1,7 @@
 class Err {
   public offset: number;
   public position: Position;
-  constructor(public source: string, context: Context, public message: string) {
+  constructor(source: string, context: Context, public message: string) {
     this.offset = context.offset;
     this.position = calcPosition(source, context.offset);
   }
@@ -48,6 +48,10 @@ export class Context {
   consume(amount: number): void {
     this.offset += amount;
   }
+  setError(error: Err): null {
+    this.error = error;
+    return null;
+  }
 }
 
 class ChildContext extends Context {
@@ -62,16 +66,17 @@ class ChildContext extends Context {
 export type Parser<A> = (source: string, context: Context) => A;
 
 export function run<A>(parser: Parser<A>, source: string): A {
+  const context = new Context();
+  let value;
   try {
-    const context = new Context();
-    const value = parser(source, context);
-    if (context.error) {
-      throw new ParseError(context.error);
-    }
-    return value;
+    value = parser(source, context);
   } catch (e) {
-    throw new ParseError(e);
+    context.error = new Err(source, context, e.message);
   }
+  if (context.error) {
+    throw new ParseError(context.error);
+  }
+  return value;
 }
 
 export function seq<A extends Array<any>, B>(
@@ -110,73 +115,61 @@ export function skipSeq(...parsers: Parser<unknown>[]): Parser<void> {
 
 export function map<A, B>(
   p: Parser<A>,
-  f: (
-    a: A,
-    fail: (message: string) => never,
-    source: string,
-    context: Context
-  ) => B
+  f: (a: A, setError: (message: string) => null) => B
 ): Parser<B> {
   return (source, context) => {
     const childContext = new ChildContext(context);
     const a = p(source, childContext);
-    if (childContext.error) {
-      context.error = childContext.error;
+    if (childContext.error !== null) {
+      return context.setError(childContext.error);
+    }
+    let value;
+    try {
+      value = f(a, message => {
+        return context.setError(new Err(source, context, message));
+      });
+    } catch (e) {
+      context.error = new Err(source, context, e.message);
+    }
+    if (context.error) {
       return null;
     }
-    try {
-      const value = f(
-        a,
-        message => {
-          throw new Err(source, context, message);
-        },
-        source,
-        context
-      );
-      childContext.commit();
-      return value;
-    } catch (e) {
-      if (e instanceof Err) {
-        throw e;
-      } else {
-        throw new Err(source, context, e.message);
-      }
-    }
+    childContext.commit();
+    return value;
   };
 }
 
 export function mapWithRange<A, B>(
   parser: Parser<A>,
-  f: (value: A, range: Range, fail: (message: string) => never) => B
+  f: (value: A, range: Range, fail: (message: string) => void) => B
 ): Parser<B> {
   return (source, context) => {
     const childContext = new ChildContext(context);
     const start = calcPosition(source, childContext.offset);
     const a = parser(source, childContext);
-    if (childContext.error) {
-      context.error = childContext.error;
-      return null;
+    if (childContext.error !== null) {
+      return context.setError(childContext.error);
     }
     const end = calcPosition(source, childContext.offset - 1);
+    let value;
     try {
-      const value = f(a, { start, end }, message => {
-        throw new Err(source, context, message);
+      value = f(a, { start, end }, message => {
+        context.error = new Err(source, context, message);
       });
-      childContext.commit();
-      return value;
     } catch (e) {
-      if (e instanceof Err) {
-        throw e;
-      } else {
-        throw new Err(source, context, e.message);
-      }
+      context.error = new Err(source, context, e.message);
     }
+    if (context.error) {
+      return null;
+    }
+    childContext.commit();
+    return value;
   };
 }
 
 export const end: Parser<void> = (source, context) => {
   if (source.length !== context.offset) {
-    throw new Err(source, context, `Not the end of source`);
+    context.error = new Err(source, context, `Not the end of source`);
   }
 };
 
@@ -185,38 +178,25 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
     const errors = [];
     for (const p of parsers) {
       const originalOffset = context.offset;
-      try {
-        const value = p(source, context);
-        if (!context.error) {
-          return value;
-        }
-        if (originalOffset === context.offset) {
-          errors.push(context.error);
-          context.error = null;
-        } else {
-          return null;
-        }
-      } catch (e) {
-        if (e instanceof Err && originalOffset === context.offset) {
-          errors.push(e);
-        } else {
-          throw e;
-        }
+      const value = p(source, context);
+      if (!context.error) {
+        return value;
+      }
+      if (originalOffset === context.offset) {
+        errors.push(context.error);
+        context.error = null;
+      } else {
+        return null;
       }
     }
-    context.error = new OneOfError(
-      source,
-      context,
-      `Did not match any of ${parsers.length} parsers`,
-      errors
+    return context.setError(
+      new OneOfError(
+        source,
+        context,
+        `Did not match any of ${parsers.length} parsers`,
+        errors
+      )
     );
-    return null;
-    // throw new OneOfError(
-    //   source,
-    //   context,
-    //   `Did not match any of ${parsers.length} parsers`,
-    //   errors
-    // );
   };
 }
 
@@ -224,9 +204,8 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const childContext = new ChildContext(context);
     const a = parser(source, childContext);
-    if (childContext.error) {
-      context.error = childContext.error;
-      return null;
+    if (childContext.error !== null) {
+      return context.setError(childContext.error);
     }
     childContext.commit();
     return a;
@@ -239,7 +218,7 @@ export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
     try {
       parser = getParser();
     } catch (e) {
-      throw new Err(source, context, e.message);
+      return context.setError(new Err(source, context, e.message));
     }
     return parser(source, context);
   };
@@ -255,13 +234,9 @@ export function match(regexString: string): Parser<string> {
       context.consume(s.length);
       return s;
     } else {
-      context.error = new Err(
-        source,
-        context,
-        `Did not match "${regexString}"`
+      return context.setError(
+        new Err(source, context, `Did not match "${regexString}"`)
       );
-      return null;
-      // throw new Err(source, context, `Did not match "${regexString}"`);
     }
   };
 }
@@ -283,8 +258,9 @@ export function expectString(s: string, name = "string"): Parser<void> {
     if (source.startsWith(s, context.offset)) {
       context.consume(s.length);
     } else {
-      context.error = new Err(source, context, `Could not find ${name} "${s}"`);
-      // throw new Err(source, context, `Could not find ${name} "${s}"`);
+      context.setError(
+        new Err(source, context, `Could not find ${name} "${s}"`)
+      );
     }
   };
 }
@@ -295,13 +271,9 @@ export function stringBefore(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.error = new Err(
-        source,
-        context,
-        `Did not match "${regexString}"`
+      context.setError(
+        new Err(source, context, `Did not match "${regexString}"`)
       );
-      return null;
-      // throw new Err(source, context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length);
@@ -314,13 +286,9 @@ export function stringUntil(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.error = new Err(
-        source,
-        context,
-        `Did not match "${regexString}"`
+      context.setError(
+        new Err(source, context, `Did not match "${regexString}"`)
       );
-      return null;
-      // throw new Err(source, context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length + result[0].length);
@@ -362,9 +330,7 @@ export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
       return null;
     }
     if (context.offset === originalOffset) {
-      context.error = new Err(source, context, "No string consumed");
-      return null;
-      // throw new Err(source, context, "No string consumed");
+      return context.setError(new Err(source, context, "No string consumed"));
     }
     return a;
   };
@@ -432,24 +398,20 @@ export function mapKeyword<A>(s: string, value: A): Parser<A> {
 }
 
 export function int(regexString: string): Parser<number> {
-  return map(match(regexString), (s, fail, source, context) => {
+  return map(match(regexString), (s, setError) => {
     const n = parseInt(s);
     if (isNaN(n)) {
-      context.error = new Err(source, context, `${s} is not an integer`);
-      return null;
-      // fail(`${s} is not an integer`);
+      return setError(`${s} is not an integer`);
     }
     return n;
   });
 }
 
 export function float(regexString: string): Parser<number> {
-  return map(match(regexString), (s, fail, source, context) => {
+  return map(match(regexString), (s, setError) => {
     const n = parseFloat(s);
     if (isNaN(n)) {
-      context.error = new Err(source, context, `${s} is not a float`);
-      return null;
-      // fail(`${s} is not a float`);
+      return setError(`${s} is not a float`);
     }
     return n;
   });
