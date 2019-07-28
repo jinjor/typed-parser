@@ -1,18 +1,30 @@
-class Err {
-  public offset: number;
-  public _position: Position;
-  get position() {
+export type Position = {
+  row: number;
+  column: number;
+};
+
+export type Range = {
+  start: Position;
+  end: Position;
+};
+
+export class ParseError extends Error {
+  private _position: Position;
+  constructor(
+    public message: string,
+    private source: string,
+    private context: Context
+  ) {
+    super(message);
+  }
+  get offset() {
+    return this.context.offset;
+  }
+  get position(): Position {
     if (!this._position) {
       this._position = calcPosition(this.source, this.offset);
     }
     return this._position;
-  }
-  constructor(
-    private source: string,
-    context: Context,
-    public message: string
-  ) {
-    this.offset = context.offset;
   }
 }
 
@@ -24,30 +36,13 @@ function calcPosition(source: string, offset: number): Position {
   return { row, column };
 }
 
-export type Position = {
-  row: number;
-  column: number;
-};
-
-export type Range = {
-  start: Position;
-  end: Position;
-};
-
-class OneOfError extends Err {
-  constructor(
-    source: string,
-    context: Context,
-    message: string,
-    public errors: Err[]
-  ) {
-    super(source, context, message);
-  }
+class Err {
+  constructor(public context: Context, public message: string) {}
 }
 
-export class ParseError extends Error {
-  constructor(public error: Err) {
-    super(error.message + "\n" + JSON.stringify(error, null, 2));
+class OneOfError extends Err {
+  constructor(context: Context, message: string, public errors: Err[]) {
+    super(context, message);
   }
 }
 
@@ -80,10 +75,11 @@ export function run<A>(parser: Parser<A>, source: string): A {
   try {
     value = parser(source, context);
   } catch (e) {
-    context.error = new Err(source, context, e.message);
+    context.error = new Err(context, e.message);
   }
   if (context.error) {
-    throw new ParseError(context.error);
+    const message = context.error.message;
+    throw new ParseError(message, source, context.error.context);
   }
   return value;
 }
@@ -135,10 +131,10 @@ export function map<A, B>(
     let value;
     try {
       value = f(a, message => {
-        return context.setError(new Err(source, context, message));
+        return context.setError(new Err(context, message));
       });
     } catch (e) {
-      context.error = new Err(source, context, e.message);
+      context.error = new Err(context, e.message);
     }
     if (context.error) {
       return null;
@@ -163,10 +159,10 @@ export function mapWithRange<A, B>(
     let value;
     try {
       value = f(a, { start, end }, message => {
-        context.error = new Err(source, context, message);
+        context.error = new Err(context, message);
       });
     } catch (e) {
-      context.error = new Err(source, context, e.message);
+      context.error = new Err(context, e.message);
     }
     if (context.error) {
       return null;
@@ -178,7 +174,7 @@ export function mapWithRange<A, B>(
 
 export const end: Parser<void> = (source, context) => {
   if (source.length !== context.offset) {
-    context.error = new Err(source, context, `Not the end of source`);
+    context.error = new Err(context, `Not the end of source`);
   }
 };
 
@@ -200,7 +196,6 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
     }
     return context.setError(
       new OneOfError(
-        source,
         context,
         `Did not match any of ${parsers.length} parsers`,
         errors
@@ -227,7 +222,7 @@ export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
     try {
       parser = getParser();
     } catch (e) {
-      return context.setError(new Err(source, context, e.message));
+      return context.setError(new Err(context, e.message));
     }
     return parser(source, context);
   };
@@ -244,7 +239,7 @@ export function match(regexString: string): Parser<string> {
       return s;
     } else {
       return context.setError(
-        new Err(source, context, `Did not match "${regexString}"`)
+        new Err(context, `Did not match "${regexString}"`)
       );
     }
   };
@@ -265,9 +260,7 @@ export function expectString(s: string, name = "string"): Parser<void> {
     if (source.startsWith(s, context.offset)) {
       context.consume(s.length);
     } else {
-      context.setError(
-        new Err(source, context, `Could not find ${name} "${s}"`)
-      );
+      context.setError(new Err(context, `Could not find ${name} "${s}"`));
     }
   };
 }
@@ -278,9 +271,7 @@ export function stringBefore(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.setError(
-        new Err(source, context, `Did not match "${regexString}"`)
-      );
+      context.setError(new Err(context, `Did not match "${regexString}"`));
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length);
@@ -293,9 +284,7 @@ export function stringUntil(regexString: string): Parser<string> {
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      context.setError(
-        new Err(source, context, `Did not match "${regexString}"`)
-      );
+      context.setError(new Err(context, `Did not match "${regexString}"`));
     }
     const s = source.slice(context.offset, result.index);
     context.consume(s.length + result[0].length);
@@ -337,7 +326,7 @@ export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
       return null;
     }
     if (context.offset === originalOffset) {
-      return context.setError(new Err(source, context, "No string consumed"));
+      return context.setError(new Err(context, "No string consumed"));
     }
     return a;
   };

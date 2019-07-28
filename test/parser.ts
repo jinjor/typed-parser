@@ -62,9 +62,9 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
   if (!(error instanceof ParseError)) {
     throw new Error("Unexpected error type: " + JSON.stringify(error));
   }
-  if (error.error.offset !== offset) {
+  if (error.offset !== offset) {
     throw new Error(
-      `Offsets did not match: expected = ${offset}, actual = ${error.error.offset}, source = ${source}`
+      `Offsets did not match: expected = ${offset}, actual = ${error.offset}, source = ${source}`
     );
   }
 }
