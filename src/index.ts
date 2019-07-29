@@ -9,7 +9,8 @@ export type Range = {
 };
 
 export class ParseError extends Error {
-  private _position: Position;
+  private positions = new WeakMap<Context, Position>();
+  private initialPositions = new WeakMap<Context, Position>();
   constructor(message: string, private source: string, private error: Err) {
     super(message);
   }
@@ -17,45 +18,57 @@ export class ParseError extends Error {
     return this.error.context.offset;
   }
   get position(): Position {
-    if (!this._position) {
-      this._position = calcPosition(this.source, this.offset);
-    }
-    return this._position;
+    return this.getPosition(this.error.context);
   }
-  explain(): void {
-    let contexts = [this.error.context];
-    while (contexts[0].parent) {
-      contexts.unshift(contexts[0].parent);
+  private getPosition(context: Context): Position {
+    if (!this.positions.has(context)) {
+      this.positions.set(context, calcPosition(this.source, context.offset));
     }
-    const startPos = calcPosition(
-      this.source,
-      this.error.context.initialOffset
-    );
-    const errorPos = calcPosition(this.source, this.error.context.offset);
+    return this.positions.get(context);
+  }
+  private getInitialPosition(context: Context): Position {
+    if (!this.initialPositions.has(context)) {
+      this.initialPositions.set(
+        context,
+        calcPosition(this.source, context.initialOffset)
+      );
+    }
+    return this.initialPositions.get(context);
+  }
+  explain(): string {
+    let text = "";
+    const startPos = this.getInitialPosition(this.error.context);
+    const errorPos = this.position;
     const lines = this.source.split("\n").slice(startPos.row - 1, errorPos.row);
-    console.log(`${this.message} (${errorPos.row}:${errorPos.column})`);
-    console.log();
-    for (let r = startPos.row; r <= errorPos.row; r++) {
-      const line = lines[r - startPos.row];
-      console.log(`${String(r).padStart(5)}| ${line}`);
-    }
-    console.log(`${" ".repeat(6 + errorPos.column)}^`);
-    console.log();
-    const namedContexts = contexts.filter(c => c.name);
-    if (namedContexts.length) {
-      console.log("Context:");
-      for (let i = namedContexts.length - 1; i >= 0; i--) {
-        const context = namedContexts[i];
-        if (!context.name) {
-          continue;
-        }
-        const { row, column } = calcPosition(
-          this.source,
-          context.initialOffset
-        );
-        console.log(`    at ${context.name} (${row}:${column}) `);
+    text += `${this.message} (${errorPos.row}:${errorPos.column})\n`;
+    if (this.error instanceof OneOfError) {
+      for (const e of this.error.errors) {
+        text += `  - ${e.message}\n`;
       }
     }
+    text += "\n";
+    for (let r = startPos.row; r <= errorPos.row; r++) {
+      const line = lines[r - startPos.row];
+      text += `${String(r).padStart(5)}| ${line}\n`;
+    }
+    text += `${" ".repeat(6 + errorPos.column)}^\n`;
+    let context = this.error.context;
+    const stack = [];
+    while (context) {
+      if (context.name) {
+        const { row, column } = this.getInitialPosition(context);
+        stack.push(`    at ${context.name} (${row}:${column}) `);
+      }
+      context = context.parent;
+    }
+    if (stack.length) {
+      text += "\n";
+      text += "Context:\n";
+      for (const s of stack) {
+        text += `${s}\n`;
+      }
+    }
+    return text;
   }
 }
 
@@ -82,7 +95,6 @@ export interface Context {
   offset: number;
   name: string;
   parent: Context;
-  consume(amount: number): void;
 }
 
 class TopContext implements Context {
@@ -90,9 +102,6 @@ class TopContext implements Context {
   initialOffset: number = 0;
   offset: number = 0;
   name: string = null;
-  consume(amount: number): void {
-    this.offset += amount;
-  }
 }
 
 class ChildContext implements Context {
@@ -106,9 +115,6 @@ class ChildContext implements Context {
   set offset(offset: number) {
     this.parent.offset = offset;
   }
-  consume(amount: number): void {
-    this.parent.consume(amount);
-  }
 }
 
 class ProtevtiveContext implements Context {
@@ -121,9 +127,6 @@ class ProtevtiveContext implements Context {
   }
   commit(): void {
     this.parent.offset = this.offset;
-  }
-  consume(amount: number): void {
-    this.offset += amount;
   }
 }
 
@@ -241,7 +244,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
     }
     return new OneOfError(
       context,
-      `Did not match any of ${parsers.length} parsers`,
+      `None of ${parsers.length} parsers was successful`,
       errors
     );
   };
@@ -283,7 +286,7 @@ export function match(regexString: string): Parser<string> {
     const result = regexp.exec(source);
     if (result) {
       const s = result[0];
-      context.consume(s.length);
+      context.offset += s.length;
       return s;
     } else {
       return new Err(context, `Did not match "${regexString}"`);
@@ -305,7 +308,7 @@ export function skip(regexString: string): Parser<null> {
 export function expectString(s: string, name = "string"): Parser<null> {
   return (source, context) => {
     if (source.startsWith(s, context.offset)) {
-      context.consume(s.length);
+      context.offset += s.length;
       return null;
     } else {
       return new Err(context, `Could not find ${name} "${s}"`);
@@ -322,7 +325,7 @@ export function stringBefore(regexString: string): Parser<string> {
       return new Err(context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
-    context.consume(s.length);
+    context.offset += s.length;
     return s;
   };
 }
@@ -335,7 +338,7 @@ export function stringUntil(regexString: string): Parser<string> {
       return new Err(context, `Did not match "${regexString}"`);
     }
     const s = source.slice(context.offset, result.index);
-    context.consume(s.length + result[0].length);
+    context.offset += s.length + result[0].length;
     return s;
   };
 }
@@ -351,7 +354,7 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
       index = source.length;
     }
     const s = source.slice(context.offset, index);
-    context.consume(s.length);
+    context.offset += s.length;
     return s;
   };
 }

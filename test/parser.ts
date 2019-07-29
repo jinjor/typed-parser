@@ -33,7 +33,8 @@ import {
   $1,
   $3,
   whitespace,
-  braced
+  braced,
+  withContext
 } from "../src/index";
 import * as assert from "assert";
 
@@ -68,6 +69,7 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
     );
   }
   error.explain();
+  console.log(error.explain());
 }
 
 function failWithNonParseError<A>(parser: Parser<A>, source: string) {
@@ -209,6 +211,10 @@ describe("Core", () => {
     succeed(oneOf(attempt(atA), constant("z")), "@b", "z");
     fail(atA, "@b", 1);
     fail(oneOf(atA, constant("z")), "@b", 1);
+  });
+  it("withContext", () => {
+    succeed(withContext("number", float("\\d")), "2", 2);
+    fail(withContext("number", float("\\d")), "", 0);
   });
   it("lazy", () => {
     succeed(lazy(() => constant(1)), "", 1);

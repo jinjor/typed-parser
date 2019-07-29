@@ -111,7 +111,7 @@ describe("Examples", () => {
       const source = readFileSync(__dirname + "/broken.json", "utf8");
       run(json, source);
     } catch (e) {
-      (e as ParseError).explain();
+      console.log((e as ParseError).explain());
       console.log();
     }
   });
