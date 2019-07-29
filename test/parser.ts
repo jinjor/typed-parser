@@ -70,19 +70,23 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
   error.explain();
 }
 
-function throwError<A>(message = ""): () => never {
+function failWithNonParseError<A>(parser: Parser<A>, source: string) {
+  try {
+    run(parser, source);
+  } catch (e) {
+    assert(!(e instanceof ParseError));
+  }
+}
+
+function throwError<A>(message = "Something is wrong"): () => never {
   return () => {
-    throw message;
+    throw new Error(message);
   };
 }
 
 describe("Core", () => {
   it("run", () => {
-    try {
-      run(throwError(), "");
-    } catch (e) {
-      assert(e instanceof ParseError);
-    }
+    failWithNonParseError(throwError(), "");
   });
   it("end", () => {
     succeed(end, "");
@@ -103,7 +107,7 @@ describe("Core", () => {
     succeed(map(match("a"), a => a.toUpperCase()), "a", "A");
     fail(map(match("a"), a => a.toUpperCase()), "b");
     fail(map(match("a"), (_, fail) => fail("")), "a");
-    fail(map(match("a"), throwError()), "a");
+    failWithNonParseError(map(match("a"), throwError()), "a");
   });
   it("mapWithRange", () => {
     succeed(mapWithRange(match("a"), a => a.toUpperCase()), "a", "A");
@@ -120,7 +124,7 @@ describe("Core", () => {
     ]);
     fail(mapWithRange(match("a"), a => a.toUpperCase()), "b");
     fail(mapWithRange(match("a"), (_, __, fail) => fail("")), "a");
-    fail(mapWithRange(match("a"), throwError()), "a");
+    failWithNonParseError(mapWithRange(match("a"), throwError()), "a");
   });
   it("expectString", () => {
     succeed(expectString("a"), "a");
@@ -213,8 +217,8 @@ describe("Core", () => {
       seq((h, t) => [h, ...t], int("[0-9]"), lazy(() => nums))
     );
     succeed(nums, "123", [1, 2, 3]);
-    fail(lazy(() => null), "");
-    fail(lazy(throwError()), "");
+    failWithNonParseError(lazy(() => null), "");
+    failWithNonParseError(lazy(throwError()), "");
   });
   it("many", () => {
     succeed(many(int("[0-9]")), "123a", [1, 2, 3]);

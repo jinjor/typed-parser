@@ -131,12 +131,7 @@ export type Parser<A> = (source: string, context: Context) => A | Err;
 
 export function run<A>(parser: Parser<A>, source: string): A {
   const context = new TopContext();
-  let result: A | Err;
-  try {
-    result = parser(source, context);
-  } catch (e) {
-    result = new Err(context, e.message);
-  }
+  const result = parser(source, context);
   if (result instanceof Err) {
     const message = result.message;
     throw new ParseError(message, source, result);
@@ -188,14 +183,9 @@ export function map<A, B>(
     if (result instanceof Err) {
       return result;
     }
-    let result2;
-    try {
-      result2 = f(result, function toError(message) {
-        return new Err(context, message);
-      });
-    } catch (e) {
-      result2 = new Err(context, e.message);
-    }
+    const result2 = f(result, function toError(message) {
+      return new Err(context, message);
+    });
     if (result2 instanceof Err) {
       return result2;
     }
@@ -216,14 +206,9 @@ export function mapWithRange<A, B>(
       return result;
     }
     const end = calcPosition(source, childContext.offset - 1);
-    let result2;
-    try {
-      result2 = f(result, { start, end }, function toError(message) {
-        return new Err(context, message);
-      });
-    } catch (e) {
-      result2 = new Err(context, e.message);
-    }
+    const result2 = f(result, { start, end }, function toError(message) {
+      return new Err(context, message);
+    });
     if (result2 instanceof Err) {
       return result2;
     }
