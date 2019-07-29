@@ -77,30 +77,60 @@ class OneOfError extends Err {
   }
 }
 
-export class Context {
-  public parent: Context = null;
-  public initialOffset: number;
-  constructor(public offset = 0, public name: string = null) {
-    this.initialOffset = offset;
+export interface Context {
+  initialOffset: number;
+  offset: number;
+  name: string;
+  parent: Context;
+  consume(amount: number): void;
+}
+
+class TopContext implements Context {
+  parent: Context = null;
+  initialOffset: number = 0;
+  offset: number = 0;
+  name: string = null;
+  consume(amount: number): void {
+    this.offset += amount;
+  }
+}
+
+class ChildContext implements Context {
+  initialOffset: number;
+  constructor(public parent: Context, public name: string) {
+    this.initialOffset = parent.offset;
+  }
+  get offset(): number {
+    return this.parent.offset;
+  }
+  set offset(offset: number) {
+    this.parent.offset = offset;
+  }
+  consume(amount: number): void {
+    this.parent.consume(amount);
+  }
+}
+
+class ProtevtiveContext implements Context {
+  initialOffset: number;
+  offset: number;
+  name: string = null;
+  constructor(public parent: Context) {
+    this.initialOffset = parent.offset;
+    this.offset = parent.offset;
+  }
+  commit(): void {
+    this.parent.offset = this.offset;
   }
   consume(amount: number): void {
     this.offset += amount;
   }
 }
 
-class ChildContext extends Context {
-  constructor(public parent: Context, name: string = null) {
-    super(parent.offset, name);
-  }
-  commit(): void {
-    this.parent.offset = this.offset;
-  }
-}
-
 export type Parser<A> = (source: string, context: Context) => A | Err;
 
 export function run<A>(parser: Parser<A>, source: string): A {
-  const context = new Context();
+  const context = new TopContext();
   let result: A | Err;
   try {
     result = parser(source, context);
@@ -153,7 +183,7 @@ export function map<A, B>(
   f: (a: A, toError: (message: string) => Err) => B | Err
 ): Parser<B> {
   return (source, context) => {
-    const childContext = new ChildContext(context);
+    const childContext = new ProtevtiveContext(context);
     const result = parser(source, childContext);
     if (result instanceof Err) {
       return result;
@@ -179,7 +209,7 @@ export function mapWithRange<A, B>(
   f: (value: A, range: Range, toError: (message: string) => Err) => B
 ): Parser<B> {
   return (source, context) => {
-    const childContext = new ChildContext(context);
+    const childContext = new ProtevtiveContext(context);
     const start = calcPosition(source, childContext.offset);
     const result = parser(source, childContext);
     if (result instanceof Err) {
@@ -218,7 +248,6 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
       if (!(result instanceof Err)) {
         return result;
       }
-      // if (originalOffset === result.context.offset) {
       if (originalOffset === context.offset) {
         errors.push(result);
       } else {
@@ -235,7 +264,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
 
 export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
-    const childContext = new ChildContext(context);
+    const childContext = new ProtevtiveContext(context);
     const result = parser(source, childContext);
     if (result instanceof Err) {
       return result;
@@ -248,12 +277,7 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
 export function withContext<A>(name: string, parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const childContext = new ChildContext(context, name);
-    const result = parser(source, childContext);
-    if (result instanceof Err) {
-      return result;
-    }
-    childContext.commit();
-    return result;
+    return parser(source, childContext);
   };
 }
 
