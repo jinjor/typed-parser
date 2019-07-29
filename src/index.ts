@@ -10,21 +10,52 @@ export type Range = {
 
 export class ParseError extends Error {
   private _position: Position;
-  constructor(
-    public message: string,
-    private source: string,
-    private context: Context
-  ) {
+  constructor(message: string, private source: string, private error: Err) {
     super(message);
   }
-  get offset() {
-    return this.context.offset;
+  get offset(): number {
+    return this.error.context.offset;
   }
   get position(): Position {
     if (!this._position) {
       this._position = calcPosition(this.source, this.offset);
     }
     return this._position;
+  }
+  explain(): void {
+    let contexts = [this.error.context];
+    while (contexts[0].parent) {
+      contexts.unshift(contexts[0].parent);
+    }
+    const startPos = calcPosition(
+      this.source,
+      this.error.context.initialOffset
+    );
+    const errorPos = calcPosition(this.source, this.error.context.offset);
+    const lines = this.source.split("\n").slice(startPos.row - 1, errorPos.row);
+    console.log(`${this.message} (${errorPos.row}:${errorPos.column})`);
+    console.log();
+    for (let r = startPos.row; r <= errorPos.row; r++) {
+      const line = lines[r - startPos.row];
+      console.log(`${String(r).padStart(5)}| ${line}`);
+    }
+    console.log(`${" ".repeat(6 + errorPos.column)}^`);
+    console.log();
+    const namedContexts = contexts.filter(c => c.name);
+    if (namedContexts.length) {
+      console.log("Context:");
+      for (let i = namedContexts.length - 1; i >= 0; i--) {
+        const context = namedContexts[i];
+        if (!context.name) {
+          continue;
+        }
+        const { row, column } = calcPosition(
+          this.source,
+          context.initialOffset
+        );
+        console.log(`    at ${context.name} (${row}:${column}) `);
+      }
+    }
   }
 }
 
@@ -47,15 +78,19 @@ class OneOfError extends Err {
 }
 
 export class Context {
-  constructor(public offset = 0) {}
+  public parent: Context = null;
+  public initialOffset: number;
+  constructor(public offset = 0, public name: string = null) {
+    this.initialOffset = offset;
+  }
   consume(amount: number): void {
     this.offset += amount;
   }
 }
 
 class ChildContext extends Context {
-  constructor(private parent: Context) {
-    super(parent.offset);
+  constructor(public parent: Context, name: string = null) {
+    super(parent.offset, name);
   }
   commit(): void {
     this.parent.offset = this.offset;
@@ -74,7 +109,7 @@ export function run<A>(parser: Parser<A>, source: string): A {
   }
   if (result instanceof Err) {
     const message = result.message;
-    throw new ParseError(message, source, result.context);
+    throw new ParseError(message, source, result);
   }
   return result;
 }
@@ -183,6 +218,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
       if (!(result instanceof Err)) {
         return result;
       }
+      // if (originalOffset === result.context.offset) {
       if (originalOffset === context.offset) {
         errors.push(result);
       } else {
@@ -200,6 +236,18 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
 export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const childContext = new ChildContext(context);
+    const result = parser(source, childContext);
+    if (result instanceof Err) {
+      return result;
+    }
+    childContext.commit();
+    return result;
+  };
+}
+
+export function withContext<A>(name: string, parser: Parser<A>): Parser<A> {
+  return (source, context) => {
+    const childContext = new ChildContext(context, name);
     const result = parser(source, childContext);
     if (result instanceof Err) {
       return result;
@@ -299,7 +347,7 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
   };
 }
 
-export const noop: Parser<null> = _ => null;
+export const noop: Parser<null> = (source: string, context: Context) => null;
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;

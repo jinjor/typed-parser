@@ -67,6 +67,7 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
       `Offsets did not match: expected = ${offset}, actual = ${error.offset}, source = ${source}`
     );
   }
+  error.explain();
 }
 
 function throwError<A>(message = ""): () => never {
@@ -193,6 +194,11 @@ describe("Core", () => {
     succeed(oneOf(match("a"), match("b")), "b", "b");
     fail(oneOf(match("a"), match("b")), "c");
     fail(oneOf(seq($1, match("a"), match("a")), match("ab")), "ab", 1);
+    fail(
+      oneOf(braced("{", "}", oneOf(braced("{", "}", match("a"))))),
+      "{ { 1 } }",
+      4
+    );
   });
   it("attempt", () => {
     const atA = seq($2, symbol("@"), match("a"));
@@ -207,6 +213,7 @@ describe("Core", () => {
       seq((h, t) => [h, ...t], int("[0-9]"), lazy(() => nums))
     );
     succeed(nums, "123", [1, 2, 3]);
+    fail(lazy(() => null), "");
     fail(lazy(throwError()), "");
   });
   it("many", () => {
@@ -312,5 +319,7 @@ describe("Core", () => {
     );
     fail(braced("[", "]", int("[0-9]")), "[ 11 ]", 3);
     fail(braced("[", "]", int("[0-9]")), "[ 1 1 ]", 4);
+    fail(braced("[", "]", int("[0-9]")), " 1 ]", 0);
+    fail(braced("[", "]", int("[0-9]")), "[ 1 ", 4);
   });
 });

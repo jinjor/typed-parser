@@ -1,0 +1,30 @@
+{
+  "name": "typed-parser",
+  "version": "1.0.0",
+  "description": "A parser library for TypeScript",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p .",
+    "nyc": "nyc mocha -r ts-node/register -r source-map-support/register",
+    "test": "npm run test:parser && npm run test:example && npm run test:format",
+    "test:parser": "npm run nyc -- test/parser.ts",
+    "test:example": "npm run nyc -- test/example.ts",
+    "test:format": "prettier --check src/*.ts test/*.ts README.md",
+    "prepublishOnly": "npm run build"
+  },
+  "author": [, "Yosuke Torii"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^12.6.8",
+    "mocha": "^6.2.0",
+    "nyc": "^14.1.1",
+    "prettier": "^1.18.2",
+    "source-map-support": "^0.5.12",
+    "ts-node": "^8.3.0",
+    "typescript": "^3.5.3"
+  },
+  "dependencies": {},
+  "test": "\r\n\\\""
+}
