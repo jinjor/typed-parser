@@ -375,6 +375,8 @@ export function many<A>(itemParser: Parser<A>): Parser<A[]> {
     seq(
       (head, tail) => {
         return [head, ...tail];
+        // tail.unshift(head);
+        // return tail;
       },
       assertConsumed(itemParser),
       lazy(() => many(itemParser))
@@ -398,6 +400,8 @@ export function sepBy<A>(
     seq(
       (head, tail) => {
         return [head, ...tail];
+        // tail.unshift(head);
+        // return tail;
       },
       itemParser,
       many(nextItem(separator, itemParser))
@@ -412,7 +416,9 @@ export function sepBy1<A>(
 ): Parser<A[]> {
   return seq(
     (head, tail) => {
-      return [head, ...tail];
+      // return [head, ...tail];
+      tail.unshift(head);
+      return tail;
     },
     itemParser,
     many(nextItem(separator, itemParser))
@@ -424,7 +430,32 @@ function sepUntilTail<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A[]> {
-  return seq($1, many(nextItem(separator, itemParser)), map(end, _ => []));
+  return oneOf(
+    map(end, _ => []),
+    seq(
+      (head, tail) => {
+        tail.unshift(head);
+        return tail;
+      },
+      nextItem(separator, itemParser),
+      lazy(() => sepUntilTail(end, separator, itemParser))
+    )
+  );
+}
+
+export function sepUntil1<A>(
+  end: Parser<unknown>,
+  separator: Parser<unknown>,
+  itemParser: Parser<A>
+): Parser<A[]> {
+  return seq(
+    (head, tail) => {
+      tail.unshift(head);
+      return tail;
+    },
+    itemParser,
+    sepUntilTail(end, separator, itemParser)
+  );
 }
 
 export function sepUntil<A>(
@@ -432,16 +463,7 @@ export function sepUntil<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A[]> {
-  return oneOf(
-    map(end, _ => []),
-    seq(
-      (head, tail) => {
-        return [head, ...tail];
-      },
-      itemParser,
-      sepUntilTail(end, separator, itemParser)
-    )
-  );
+  return oneOf(map(end, _ => []), sepUntil1(end, separator, itemParser));
 }
 
 export function symbol(s: string): Parser<null> {

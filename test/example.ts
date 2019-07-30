@@ -82,14 +82,14 @@ describe("Examples", () => {
       }
       return obj;
     }
-    // const object = withContext(
-    //   "object",
-    //   braced("{", "}", map(sepBy(itemSep, field), toObject))
-    // );
     const object = withContext(
       "object",
-      map(bracedSep("{", "}", itemSep, field), toObject)
+      braced("{", "}", map(sepBy(itemSep, field), toObject))
     );
+    // const object = withContext(
+    //   "object",
+    //   map(bracedSep("{", "}", itemSep, field), toObject)
+    // );
     const items = sepBy(itemSep, seq($1, lazy(() => val), _));
     const array = withContext("array", braced("[", "]", items));
     const val: Parser<unknown> = oneOf<unknown>(object, array, str, num, bool);
