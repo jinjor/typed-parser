@@ -527,6 +527,6 @@ export function bracedSep<A>(
     $3,
     symbol(start),
     _,
-    sepUntil(symbol(end), separator, itemParser)
+    sepUntil(seq($null, _, symbol(end)), separator, itemParser)
   );
 }

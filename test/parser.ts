@@ -36,18 +36,26 @@ import {
   withContext,
   sepUntil,
   calcPosition,
-  $null
+  $null,
+  bracedSep
 } from "../src/index";
 import * as assert from "assert";
 
 function succeed<A>(parser: Parser<A>, source: string, expect?: A): void {
-  const value = run(parser, source);
-  if (expect !== undefined) {
-    assert.deepEqual(
-      value,
-      expect,
-      `Parsed values didn't match: expected = ${expect}, actual = ${value}`
-    );
+  try {
+    const value = run(parser, source);
+    if (expect !== undefined) {
+      assert.deepEqual(
+        value,
+        expect,
+        `Parsed values didn't match: expected = ${expect}, actual = ${value}, source = ${source}`
+      );
+    }
+  } catch (e) {
+    if (e instanceof ParseError) {
+      throw new Error(e.explain());
+    }
+    throw e;
   }
 }
 
@@ -223,38 +231,38 @@ describe("Core", () => {
     succeed(lazy(() => constant(1)), "", 1);
     const nums: Parser<number[]> = oneOf(
       map(end, _ => []),
-      seq((h, t) => [h, ...t], int("[0-9]"), lazy(() => nums))
+      seq((h, t) => [h, ...t], int("\\d"), lazy(() => nums))
     );
     succeed(nums, "123", [1, 2, 3]);
     failWithNonParseError(lazy(() => null), "");
     failWithNonParseError(lazy(throwError()), "");
   });
   it("many", () => {
-    succeed(many(int("[0-9]")), "123a", [1, 2, 3]);
-    succeed(many(int("[0-9]")), "123", [1, 2, 3]);
-    succeed(many(int("[0-9]")), "a1", []);
-    succeed(many(int("[0-9]")), "", []);
+    succeed(many(int("\\d")), "123a", [1, 2, 3]);
+    succeed(many(int("\\d")), "123", [1, 2, 3]);
+    succeed(many(int("\\d")), "a1", []);
+    succeed(many(int("\\d")), "", []);
     succeed(many(match(".*")), "foo", ["foo"]);
     succeed(many(attempt(seq(_ => 0, match("a"), match("b")))), "ac", []);
     fail(many(seq(_ => 0, match("a"), match("b"))), "ac", 1);
   });
   it("sepBy", () => {
-    succeed(sepBy(symbol(","), int("[0-9]")), "", []);
-    succeed(sepBy(symbol(","), int("[0-9]")), "1", [1]);
-    succeed(sepBy(symbol(","), int("[0-9]")), "1,2", [1, 2]);
-    fail(sepBy(symbol(","), int("[0-9]")), "1,a", 2);
-    fail(sepBy(symbol(","), int("[0-9]")), "1,", 2);
-    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("[0-9]")), "1!2", [
+    succeed(sepBy(symbol(","), int("\\d")), "", []);
+    succeed(sepBy(symbol(","), int("\\d")), "1", [1]);
+    succeed(sepBy(symbol(","), int("\\d")), "1,2", [1, 2]);
+    fail(sepBy(symbol(","), int("\\d")), "1,a", 2);
+    fail(sepBy(symbol(","), int("\\d")), "1,", 2);
+    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!2", [
       1
     ]);
-    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("[0-9]")), "1!?2", [
+    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!?2", [
       1,
       2
     ]);
-    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("[0-9]")), "1!2", [
+    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!2", [
       1
     ]);
-    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("[0-9]")), "1!?2", [
+    succeed(sepBy(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!?2", [
       1,
       2
     ]);
@@ -266,48 +274,37 @@ describe("Core", () => {
     fail(sepBy(symbol(","), seq(_ => 0, match("a"), match("b"))), "ac", 1);
   });
   it("sepBy1", () => {
-    fail(sepBy1(symbol(","), int("[0-9]")), "");
-    succeed(sepBy1(symbol(","), int("[0-9]")), "1", [1]);
-    succeed(sepBy1(symbol(","), int("[0-9]")), "1,2", [1, 2]);
-    fail(sepBy1(symbol(","), int("[0-9]")), "1,a", 2);
-    fail(sepBy1(symbol(","), int("[0-9]")), "1,", 2);
-    // succeed(
-    //   sepBy1(seq($null, symbol("!"), symbol("?")), int("[0-9]")),
-    //   "1!2",
-    //   [1]
-    // );
-    // succeed(
-    //   sepBy1(seq($null, symbol("!"), symbol("?")), int("[0-9]")),
-    //   "1!?2",
-    //   [1, 2]
-    // );
-    // succeed(
-    //   sepBy1(seq($null, symbol("!"), symbol("?")), int("[0-9]")),
-    //   "1!2",
-    //   [1]
-    // );
-    // succeed(
-    //   sepBy1(seq($null, symbol("!"), symbol("?")), int("[0-9]")),
-    //   "1!?2",
-    //   [1, 2]
-    // );
-    // fail(
-    //   sepBy1(symbol(","), attempt(seq(_ => 0, match("a"), match("b")))),
-    //   "ac",
-    //   1
-    // );
+    fail(sepBy1(symbol(","), int("\\d")), "");
+    succeed(sepBy1(symbol(","), int("\\d")), "1", [1]);
+    succeed(sepBy1(symbol(","), int("\\d")), "1,2", [1, 2]);
+    fail(sepBy1(symbol(","), int("\\d")), "1,a", 2);
+    fail(sepBy1(symbol(","), int("\\d")), "1,", 2);
+    succeed(sepBy1(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!2", [
+      1
+    ]);
+    succeed(sepBy1(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!?2", [
+      1,
+      2
+    ]);
+    succeed(sepBy1(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!2", [
+      1
+    ]);
+    succeed(sepBy1(seq($null, symbol("!"), symbol("?")), int("\\d")), "1!?2", [
+      1,
+      2
+    ]);
     fail(sepBy1(symbol(","), seq(_ => 0, match("a"), match("b"))), "ac", 1);
   });
   it("sepUntil", () => {
-    succeed(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "]", []);
-    succeed(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "1]", [1]);
-    succeed(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "1,2]", [1, 2]);
-    succeed(sepUntil(end, symbol(","), int("[0-9]")), "", []);
-    succeed(sepUntil(end, symbol(","), int("[0-9]")), "1", [1]);
-    succeed(sepUntil(end, symbol(","), int("[0-9]")), "1,2", [1, 2]);
-    fail(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "", 0);
-    fail(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "1", 1);
-    fail(sepUntil(symbol("]"), symbol(","), int("[0-9]")), "1,2", 3);
+    succeed(sepUntil(symbol("]"), symbol(","), int("\\d")), "]", []);
+    succeed(sepUntil(symbol("]"), symbol(","), int("\\d")), "1]", [1]);
+    succeed(sepUntil(symbol("]"), symbol(","), int("\\d")), "1,2]", [1, 2]);
+    succeed(sepUntil(end, symbol(","), int("\\d")), "", []);
+    succeed(sepUntil(end, symbol(","), int("\\d")), "1", [1]);
+    succeed(sepUntil(end, symbol(","), int("\\d")), "1,2", [1, 2]);
+    fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "", 0);
+    fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "1", 1);
+    fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "1,2", 3);
   });
   it("symbol", () => {
     succeed(symbol("!"), "!");
@@ -325,35 +322,55 @@ describe("Core", () => {
     fail(mapKeyword("foo", 1), "");
   });
   it("int", () => {
-    succeed(int("[0-9]"), "1", 1);
+    succeed(int("\\d"), "1", 1);
     fail(int("[1-9]"), "0");
-    fail(int("[0-9]"), " 1");
+    fail(int("\\d"), " 1");
     fail(int("a"), "a");
   });
   it("float", () => {
     succeed(float("[0-9]\\.[0-9]"), "1.1", 1.1);
     fail(float("[1-9]"), "0");
-    fail(float("[0-9]"), " 1");
+    fail(float("\\d"), " 1");
     fail(float("[1-9]"), "0.5");
     fail(float("a"), "a");
   });
   it("whitespace", () => {
-    succeed(seq($2, whitespace, int("[0-9]")), " \t\r\n1", 1);
-    succeed(seq($2, _, int("[0-9]")), " \t\r\n1", 1);
+    succeed(seq($2, whitespace, int("\\d")), " \t\r\n1", 1);
+    succeed(seq($2, _, int("\\d")), " \t\r\n1", 1);
   });
   it("braced", () => {
-    succeed(braced("[", "]", int("[0-9]")), "[1]", 1);
-    succeed(braced("[", "]", int("[0-9]")), "[ 1]", 1);
-    succeed(braced("[", "]", int("[0-9]")), "[1 ]", 1);
-    succeed(braced("[", "]", int("[0-9]")), "[ 1 ]", 1);
+    succeed(braced("[", "]", int("\\d")), "[1]", 1);
+    succeed(braced("[", "]", int("\\d")), "[ 1]", 1);
+    succeed(braced("[", "]", int("\\d")), "[1 ]", 1);
+    succeed(braced("[", "]", int("\\d")), "[ 1 ]", 1);
     succeed(
-      seq((a, b) => [a, b], braced("[[", "]]", int("[0-9]")), int("[0-9]")),
+      seq((a, b) => [a, b], braced("[[", "]]", int("\\d")), int("\\d")),
       "[[ 1 ]]2",
       [1, 2]
     );
-    fail(braced("[", "]", int("[0-9]")), "[ 11 ]", 3);
-    fail(braced("[", "]", int("[0-9]")), "[ 1 1 ]", 4);
-    fail(braced("[", "]", int("[0-9]")), " 1 ]", 0);
-    fail(braced("[", "]", int("[0-9]")), "[ 1 ", 4);
+    fail(braced("[", "]", int("\\d")), "[ 11 ]", 3);
+    fail(braced("[", "]", int("\\d")), "[ 1 1 ]", 4);
+    fail(braced("[", "]", int("\\d")), " 1 ]", 0);
+    fail(braced("[", "]", int("\\d")), "[ 1 ", 4);
+  });
+  it("bracedSep", () => {
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[]", []);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[ ]", []);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[1]", [1]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[ 1]", [1]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[1 ]", [1]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[ 1 ]", [1]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[1,2]", [1, 2]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[ 1,2]", [1, 2]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[1,2 ]", [1, 2]);
+    succeed(bracedSep("[", "]", symbol(","), int("\\d")), "[ 1,2 ]", [1, 2]);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "");
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[", 1);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "]");
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[1", 2);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[,1]", 1);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[1,]", 3);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[1 2]", 3);
+    fail(bracedSep("[", "]", symbol(","), int("\\d")), "[1,,2]", 3);
   });
 });
