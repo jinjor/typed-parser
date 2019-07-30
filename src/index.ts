@@ -9,43 +9,31 @@ export type Range = {
 };
 
 export class ParseError extends Error {
-  private positions = new WeakMap<Context, Position>();
-  private initialPositions = new WeakMap<Context, Position>();
-  constructor(message: string, private source: string, private error: Err) {
-    super(message);
+  private positions = new Map<number, Position>();
+  constructor(private source: string, private error: Err) {
+    super(error.message);
   }
   get offset(): number {
-    return this.error.context.offset;
+    return this.error.offset;
   }
   get position(): Position {
-    return this.getPosition(this.error.context);
+    return this.getPosition(this.offset);
   }
-  private getPosition(context: Context): Position {
-    if (!this.positions.has(context)) {
-      this.positions.set(context, calcPosition(this.source, context.offset));
+  private getPosition(offset: number): Position {
+    if (!this.positions.has(offset)) {
+      this.positions.set(offset, calcPosition(this.source, offset));
     }
-    return this.positions.get(context);
+    return this.positions.get(offset);
   }
-  private getInitialPosition(context: Context): Position {
-    if (!this.initialPositions.has(context)) {
-      this.initialPositions.set(
-        context,
-        calcPosition(this.source, context.initialOffset)
-      );
-    }
-    return this.initialPositions.get(context);
-  }
-
   explain(): string {
     let text = "";
-    const startPos = this.getInitialPosition(this.error.context);
+    const startPos = this.getPosition(this.error.scope.offset);
     const errorPos = this.position;
     const lines = this.source.split("\n").slice(startPos.row - 1, errorPos.row);
     text += `${this.message} (${errorPos.row}:${errorPos.column})\n`;
     function appendSubMessages(error: Err, indent: number): void {
-      if (error instanceof OneOfError) {
+      if (error instanceof OneOfErr) {
         for (const e of error.errors) {
-          // const contextString = e.context.name ? ` (${e.context.name})` : "";
           const contextString = "";
           text += `${" ".repeat(indent)}- ${e.message}${contextString}\n`;
           appendSubMessages(e, indent + 2);
@@ -59,21 +47,12 @@ export class ParseError extends Error {
       text += `${String(r).padStart(5)}| ${line}\n`;
     }
     text += `${" ".repeat(6 + errorPos.column)}^\n`;
-    let context = this.error.context;
-    const stack = [];
-    while (context) {
-      if (context.name) {
-        const { row, column } = this.getInitialPosition(context);
-        stack.push(`    at ${context.name} (${row}:${column}) `);
-      }
-      context = context.parent;
-    }
-    if (stack.length) {
-      text += "\n";
-      text += "Context:\n";
-      for (const s of stack) {
-        text += `${s}\n`;
-      }
+    text += "Context:\n";
+    let scope = this.error.scope;
+    while (scope && scope.name !== null) {
+      const { row, column } = this.getPosition(scope.offset);
+      text += `    at ${scope.name} (${row}:${column}) \n`;
+      scope = scope.parent;
     }
     return text;
   }
@@ -88,50 +67,40 @@ export function calcPosition(source: string, offset: number): Position {
 }
 
 class Err {
-  constructor(public context: Context, public message: string) {}
+  public scope: Scope;
+  public offset: number;
+  constructor(context: Context, public message: string) {
+    this.scope = context.scope;
+    this.offset = context.offset;
+  }
 }
 
-class OneOfError extends Err {
+class OneOfErr extends Err {
   constructor(context: Context, message: string, public errors: Err[]) {
     super(context, message);
   }
 }
 
-export interface Context {
-  initialOffset: number;
-  offset: number;
-  name: string;
-  parent: Context;
+class Scope {
+  constructor(
+    public offset: number,
+    public name: string,
+    public parent?: Scope
+  ) {}
 }
 
-class TopContext implements Context {
-  parent: Context = null;
-  initialOffset: number = 0;
+class Context {
   offset: number = 0;
-  name: string = null;
-}
-
-class ChildContext implements Context {
-  initialOffset: number;
-  constructor(public parent: Context, public name: string) {
-    this.initialOffset = parent.offset;
-  }
-  get offset(): number {
-    return this.parent.offset;
-  }
-  set offset(offset: number) {
-    this.parent.offset = offset;
-  }
+  scope: Scope = new Scope(0, null);
 }
 
 export type Parser<A> = (source: string, context: Context) => A | Err;
 
 export function run<A>(parser: Parser<A>, source: string): A {
-  const context = new TopContext();
+  const context = new Context();
   const result = parser(source, context);
   if (result instanceof Err) {
-    const message = result.message;
-    throw new ParseError(message, source, result);
+    throw new ParseError(source, result);
   }
   return result;
 }
@@ -236,7 +205,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
         return result;
       }
     }
-    return new OneOfError(
+    return new OneOfErr(
       context,
       `None of ${parsers.length} parsers was successful`,
       errors
@@ -258,8 +227,10 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
 
 export function withContext<A>(name: string, parser: Parser<A>): Parser<A> {
   return (source, context) => {
-    const childContext = new ChildContext(context, name);
-    return parser(source, childContext);
+    context.scope = new Scope(context.offset, name, context.scope);
+    const result = parser(source, context);
+    context.scope = context.scope.parent;
+    return result;
   };
 }
 
@@ -437,17 +408,37 @@ function sepUntilTail<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A[]> {
-  return oneOf(
-    map(end, _ => []),
-    seq(
-      (head, tail) => {
-        tail.unshift(head);
-        return tail;
-      },
-      nextItem(separator, itemParser),
-      lazy(() => sepUntilTail(end, separator, itemParser))
-    )
-  );
+  // return oneOf(
+  //   seq(
+  //     (head, tail) => {
+  //       tail.unshift(head);
+  //       return tail;
+  //     },
+  //     nextItem(separator, itemParser),
+  //     lazy(() => sepUntilTail(end, separator, itemParser))
+  //   ),
+  //   map(end, _ => [])
+  // );
+  const itemParser2 = assertConsumed(itemParser);
+  return (source, context) => {
+    const items = [];
+    while (true) {
+      const result = separator(source, context);
+      if (result instanceof Err) {
+        const result = end(source, context);
+        if (result instanceof Err) {
+          return result;
+        }
+        break;
+      }
+      const result2 = itemParser2(source, context);
+      if (result2 instanceof Err) {
+        return result2;
+      }
+      items.push(result2);
+    }
+    return items;
+  };
 }
 
 export function sepUntil1<A>(
