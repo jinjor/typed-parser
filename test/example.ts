@@ -23,7 +23,8 @@ import {
   _,
   braced,
   withContext,
-  ParseError
+  ParseError,
+  bracedSep
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -81,9 +82,13 @@ describe("Examples", () => {
       }
       return obj;
     }
+    // const object = withContext(
+    //   "object",
+    //   braced("{", "}", map(sepBy(itemSep, field), toObject))
+    // );
     const object = withContext(
       "object",
-      braced("{", "}", map(sepBy(itemSep, field), toObject))
+      map(bracedSep("{", "}", itemSep, field), toObject)
     );
     const items = sepBy(itemSep, seq($1, lazy(() => val), _));
     const array = withContext("array", braced("[", "]", items));
@@ -111,6 +116,7 @@ describe("Examples", () => {
       const source = readFileSync(__dirname + "/broken.json", "utf8");
       run(json, source);
     } catch (e) {
+      // console.log(util.inspect(e, { depth: 10, colors: true }));
       console.log((e as ParseError).explain());
       console.log();
     }

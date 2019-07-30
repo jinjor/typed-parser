@@ -72,8 +72,8 @@ export class ParseError extends Error {
   }
 }
 
-function calcPosition(source: string, offset: number): Position {
-  const sub = source.slice(0, offset + 1);
+export function calcPosition(source: string, offset: number): Position {
+  const sub = (source + " ").slice(0, offset + 1);
   const lines = sub.split("\n");
   const row = lines.length;
   const column = lines[lines.length - 1].length;
@@ -160,6 +160,10 @@ export function seq<A extends Array<any>, B>(
   };
 }
 
+export function $null(..._: unknown[]): null {
+  return null;
+}
+
 export function $1<A>(a: A): A {
   return a;
 }
@@ -170,10 +174,6 @@ export function $2<A>(_1: any, a: A): A {
 
 export function $3<A>(_1: any, _2: any, a: A): A {
   return a;
-}
-
-export function skipSeq(...parsers: Parser<unknown>[]): Parser<null> {
-  return oneOf(attempt(seq(() => null, ...parsers)), noop);
 }
 
 export function map<A, B>(
@@ -230,8 +230,8 @@ export const end: Parser<null> = (source, context) => {
 export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   return (source, context) => {
     const errors = [];
+    const originalOffset = context.offset;
     for (const parser of parsers) {
-      const originalOffset = context.offset;
       const result = parser(source, context);
       if (!(result instanceof Err)) {
         return result;
@@ -432,6 +432,31 @@ export function sepBy1<A>(
   );
 }
 
+function sepUntilTail<A>(
+  end: Parser<unknown>,
+  separator: Parser<unknown>,
+  itemParser: Parser<A>
+): Parser<A[]> {
+  return seq($1, many(nextItem(separator, itemParser)), map(end, _ => []));
+}
+
+export function sepUntil<A>(
+  end: Parser<unknown>,
+  separator: Parser<unknown>,
+  itemParser: Parser<A>
+): Parser<A[]> {
+  return oneOf(
+    map(end, _ => []),
+    seq(
+      (head, tail) => {
+        return [head, ...tail];
+      },
+      itemParser,
+      sepUntilTail(end, separator, itemParser)
+    )
+  );
+}
+
 export function symbol(s: string): Parser<null> {
   return expectString(s, "symbol");
 }
@@ -473,5 +498,19 @@ export function braced<A>(
   end: string,
   parser: Parser<A>
 ): Parser<A> {
-  return seq((_, __, value) => value, symbol(start), _, parser, _, symbol(end));
+  return seq($3, symbol(start), _, parser, _, symbol(end));
+}
+
+export function bracedSep<A>(
+  start: string,
+  end: string,
+  separator: Parser<unknown>,
+  itemParser: Parser<A>
+): Parser<A[]> {
+  return seq(
+    $3,
+    symbol(start),
+    _,
+    sepUntil(symbol(end), separator, itemParser)
+  );
 }
