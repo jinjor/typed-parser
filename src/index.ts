@@ -35,17 +35,24 @@ export class ParseError extends Error {
     }
     return this.initialPositions.get(context);
   }
+
   explain(): string {
     let text = "";
     const startPos = this.getInitialPosition(this.error.context);
     const errorPos = this.position;
     const lines = this.source.split("\n").slice(startPos.row - 1, errorPos.row);
     text += `${this.message} (${errorPos.row}:${errorPos.column})\n`;
-    if (this.error instanceof OneOfError) {
-      for (const e of this.error.errors) {
-        text += `  - ${e.message}\n`;
+    function appendSubMessages(error: Err, indent: number): void {
+      if (error instanceof OneOfError) {
+        for (const e of error.errors) {
+          // const contextString = e.context.name ? ` (${e.context.name})` : "";
+          const contextString = "";
+          text += `${" ".repeat(indent)}- ${e.message}${contextString}\n`;
+          appendSubMessages(e, indent + 2);
+        }
       }
     }
+    appendSubMessages(this.error, 2);
     text += "\n";
     for (let r = startPos.row; r <= errorPos.row; r++) {
       const line = lines[r - startPos.row];

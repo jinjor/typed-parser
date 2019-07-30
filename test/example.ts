@@ -82,17 +82,24 @@ describe("Examples", () => {
       }
       return obj;
     }
-    const object = withContext(
-      "object",
-      braced("{", "}", map(sepBy(itemSep, field), toObject))
-    );
     // const object = withContext(
     //   "object",
-    //   map(bracedSep("{", "}", itemSep, field), toObject)
+    //   braced("{", "}", map(sepBy(itemSep, field), toObject))
     // );
-    const items = sepBy(itemSep, seq($1, lazy(() => val), _));
-    const array = withContext("array", braced("[", "]", items));
-    const val: Parser<unknown> = oneOf<unknown>(object, array, str, num, bool);
+    const object = withContext(
+      "object",
+      map(bracedSep("{", "}", itemSep, field), toObject)
+    );
+    // const items = sepBy(itemSep, seq($1, lazy(() => val), _));
+    // const array = withContext("array", braced("[", "]", items));
+    const array = withContext(
+      "array",
+      bracedSep("[", "]", itemSep, lazy(() => val))
+    );
+    const val: Parser<unknown> = withContext(
+      "value",
+      oneOf<unknown>(object, array, str, num, bool)
+    );
     const json = seq($2, _, val, _, end);
 
     compareJSON(__dirname + "/../package.json");
