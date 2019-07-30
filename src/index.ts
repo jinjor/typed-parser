@@ -117,19 +117,6 @@ class ChildContext implements Context {
   }
 }
 
-class ProtevtiveContext implements Context {
-  initialOffset: number;
-  offset: number;
-  name: string = null;
-  constructor(public parent: Context) {
-    this.initialOffset = parent.offset;
-    this.offset = parent.offset;
-  }
-  commit(): void {
-    this.parent.offset = this.offset;
-  }
-}
-
 export type Parser<A> = (source: string, context: Context) => A | Err;
 
 export function run<A>(parser: Parser<A>, source: string): A {
@@ -181,18 +168,18 @@ export function map<A, B>(
   f: (a: A, toError: (message: string) => Err) => B | Err
 ): Parser<B> {
   return (source, context) => {
-    const childContext = new ProtevtiveContext(context);
-    const result = parser(source, childContext);
+    const originalOffset = context.offset;
+    const result = parser(source, context);
     if (result instanceof Err) {
       return result;
     }
     const result2 = f(result, function toError(message) {
+      context.offset = originalOffset;
       return new Err(context, message);
     });
     if (result2 instanceof Err) {
       return result2;
     }
-    childContext.commit();
     return result2;
   };
 }
@@ -202,20 +189,20 @@ export function mapWithRange<A, B>(
   f: (value: A, range: Range, toError: (message: string) => Err) => B
 ): Parser<B> {
   return (source, context) => {
-    const childContext = new ProtevtiveContext(context);
-    const start = calcPosition(source, childContext.offset);
-    const result = parser(source, childContext);
+    const originalOffset = context.offset;
+    const start = calcPosition(source, context.offset);
+    const result = parser(source, context);
     if (result instanceof Err) {
       return result;
     }
-    const end = calcPosition(source, childContext.offset - 1);
+    const end = calcPosition(source, context.offset - 1);
     const result2 = f(result, { start, end }, function toError(message) {
+      context.offset = originalOffset;
       return new Err(context, message);
     });
     if (result2 instanceof Err) {
       return result2;
     }
-    childContext.commit();
     return result2;
   };
 }
@@ -252,12 +239,12 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
 
 export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
-    const childContext = new ProtevtiveContext(context);
-    const result = parser(source, childContext);
+    const originalOffset = context.offset;
+    const result = parser(source, context);
     if (result instanceof Err) {
+      context.offset = originalOffset;
       return result;
     }
-    childContext.commit();
     return result;
   };
 }
