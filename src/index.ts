@@ -142,8 +142,8 @@ export function $3<A>(_1: any, _2: any, a: A): A {
 }
 
 export function map<A, B>(
-  parser: Parser<A>,
-  f: (a: A, toError: (message: string) => Err) => B | Err
+  f: (a: A, toError: (message: string) => Err) => B | Err,
+  parser: Parser<A>
 ): Parser<B> {
   return (source, context) => {
     const originalOffset = context.offset;
@@ -160,8 +160,8 @@ export function map<A, B>(
 }
 
 export function mapWithRange<A, B>(
-  parser: Parser<A>,
-  f: (value: A, range: Range, toError: (message: string) => Err) => B
+  f: (value: A, range: Range, toError: (message: string) => Err) => B,
+  parser: Parser<A>
 ): Parser<B> {
   return (source, context) => {
     const originalOffset = context.offset;
@@ -420,7 +420,7 @@ export function sepUntil<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A[]> {
-  return guard(map(end, _ => []), sepUntil1(end, separator, itemParser));
+  return guard(map(_ => [], end), sepUntil1(end, separator, itemParser));
 }
 
 export function sepUntil1<A>(
@@ -442,32 +442,31 @@ export function symbol(s: string): Parser<null> {
   return expectString(s, "symbol");
 }
 
-export function keyword(s: string): Parser<null> {
-  return expectString(s, "keyword");
-}
-
-export function mapKeyword<A>(s: string, value: A): Parser<A> {
-  return map(expectString(s, "keyword"), _ => value);
+export function keyword<A = null>(s: string, value?: A): Parser<A> {
+  if (value === undefined) {
+    return expectString(s, "keyword");
+  }
+  return map(_ => value, expectString(s, "keyword"));
 }
 
 export function int(regexString: string): Parser<number> {
-  return map(match(regexString), (s, toError) => {
+  return map((s, toError) => {
     const n = parseInt(s);
     if (isNaN(n)) {
       return toError(`${s} is not an integer`);
     }
     return n;
-  });
+  }, match(regexString));
 }
 
 export function float(regexString: string): Parser<number> {
-  return map(match(regexString), (s, toError) => {
+  return map((s, toError) => {
     const n = parseFloat(s);
     if (isNaN(n)) {
       return toError(`${s} is not a float`);
     }
     return n;
-  });
+  }, match(regexString));
 }
 
 export const whitespace = skip("\\s*");

@@ -16,7 +16,6 @@ import {
   float,
   stringBeforeEndOr,
   constant,
-  mapKeyword,
   $1,
   $2,
   _,
@@ -24,7 +23,8 @@ import {
   withContext,
   ParseError,
   bracedSep,
-  $null
+  $null,
+  keyword
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -38,7 +38,7 @@ describe("Examples", () => {
     const variable: Parser<Variable> = braced(
       "{{",
       "}}",
-      mapWithRange(variableName, (name, range) => ({ name, range }))
+      mapWithRange((name, range) => ({ name, range }), variableName)
     );
     const template: Parser<Item[]> = seq(
       $1,
@@ -51,20 +51,20 @@ describe("Examples", () => {
 
   it("JSON", () => {
     const num = float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?");
-    const bool = oneOf(mapKeyword("true", true), mapKeyword("false", false));
-    const _null = mapKeyword("null", null);
+    const bool = oneOf(keyword("true", true), keyword("false", false));
+    const _null = keyword("null", null);
     const escape = seq(
       $2,
       symbol("\\"),
       oneOf(
-        mapKeyword('"', '"'),
-        mapKeyword("\\", "\\"),
-        mapKeyword("/", "/"),
-        mapKeyword("b", "\b"),
-        mapKeyword("f", "\f"),
-        mapKeyword("n", "\n"),
-        mapKeyword("r", "\r"),
-        mapKeyword("t", "\t")
+        keyword('"', '"'),
+        keyword("\\", "\\"),
+        keyword("/", "/"),
+        keyword("b", "\b"),
+        keyword("f", "\f"),
+        keyword("n", "\n"),
+        keyword("r", "\r"),
+        keyword("t", "\t")
       )
     );
     const strInner: Parser<string> = seq(
@@ -85,7 +85,7 @@ describe("Examples", () => {
     }
     const object = withContext(
       "object",
-      map(bracedSep("{", "}", itemSep, field), toObject)
+      map(toObject, bracedSep("{", "}", itemSep, field))
     );
     const array = withContext(
       "array",

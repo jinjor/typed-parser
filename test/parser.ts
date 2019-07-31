@@ -25,7 +25,6 @@ import {
   stringBeforeEndOr,
   stringUntil,
   todo,
-  mapKeyword,
   _,
   $2,
   $1,
@@ -123,27 +122,27 @@ describe("Core", () => {
     succeed(skip("a"), "");
   });
   it("map", () => {
-    succeed(map(match("a"), a => a.toUpperCase()), "a", "A");
-    fail(map(match("a"), a => a.toUpperCase()), "b");
-    fail(map(match("a"), (_, fail) => fail("")), "a");
-    failWithNonParseError(map(match("a"), throwError()), "a");
+    succeed(map(a => a.toUpperCase(), match("a")), "a", "A");
+    fail(map(a => a.toUpperCase(), match("a")), "b");
+    fail(map((_, fail) => fail(""), match("a")), "a");
+    failWithNonParseError(map(throwError(), match("a")), "a");
   });
   it("mapWithRange", () => {
-    succeed(mapWithRange(match("a"), a => a.toUpperCase()), "a", "A");
-    succeed(mapWithRange(match("a"), (_, r) => r), "a", {
+    succeed(mapWithRange(a => a.toUpperCase(), match("a")), "a", "A");
+    succeed(mapWithRange((_, r) => r, match("a")), "a", {
       start: { row: 1, column: 1 },
       end: { row: 1, column: 1 }
     });
-    succeed(mapWithRange(match(".*"), (s, r) => [s, r]), "ab\ncd", [
+    succeed(mapWithRange((s, r) => [s, r], match(".*")), "ab\ncd", [
       "ab\ncd",
       {
         start: { row: 1, column: 1 },
         end: { row: 2, column: 2 }
       }
     ]);
-    fail(mapWithRange(match("a"), a => a.toUpperCase()), "b");
-    fail(mapWithRange(match("a"), (_, __, fail) => fail("")), "a");
-    failWithNonParseError(mapWithRange(match("a"), throwError()), "a");
+    fail(mapWithRange(a => a.toUpperCase(), match("a")), "b");
+    fail(mapWithRange((_, __, fail) => fail(""), match("a")), "a");
+    failWithNonParseError(mapWithRange(throwError(), match("a")), "a");
   });
   it("expectString", () => {
     succeed(expectString("a"), "a");
@@ -232,7 +231,7 @@ describe("Core", () => {
   it("lazy", () => {
     succeed(lazy(() => constant(1)), "", 1);
     const nums: Parser<number[]> = oneOf(
-      map(end, _ => []),
+      map(_ => [], end),
       seq((h, t) => [h, ...t], int("\\d"), lazy(() => nums))
     );
     succeed(nums, "123", [1, 2, 3]);
@@ -342,11 +341,9 @@ describe("Core", () => {
     succeed(keyword("foo"), "foo");
     fail(keyword("foo"), " foo");
     fail(keyword("foo"), "");
-  });
-  it("mapKeyword", () => {
-    succeed(mapKeyword("foo", 1), "foo", 1);
-    fail(mapKeyword("foo", 1), " foo");
-    fail(mapKeyword("foo", 1), "");
+    succeed(keyword("foo", 1), "foo", 1);
+    fail(keyword("foo", 1), " foo");
+    fail(keyword("foo", 1), "");
   });
   it("int", () => {
     succeed(int("\\d"), "1", 1);
