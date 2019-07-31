@@ -6,7 +6,7 @@ A parser library for TypeScript, inspired by elm/parser and Parsec(Haskell).
 
 ## Usage
 
-- [API](./src/index.ts)
+- [API](https://jinjor.github.io/typed-parser/)
 - [Example](./test/example.ts)
 
 ## LICENSE
