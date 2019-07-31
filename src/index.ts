@@ -8,7 +8,17 @@ export type Range = {
   end: Position;
 };
 
-export class ParseError extends Error {
+export interface ParseError extends Error {
+  offset: number;
+  position: Position;
+  explain(): string;
+}
+
+export function isParseError(e: any): e is ParseError {
+  return e instanceof ParseErrorImpl;
+}
+
+class ParseErrorImpl extends Error implements ParseError {
   private positions = new Map<number, Position>();
   constructor(private source: string, private error: Err) {
     super(error.message);
@@ -102,7 +112,7 @@ export function run<A>(parser: Parser<A>, source: string): A {
   const context = new Context();
   const result = parser(source, context);
   if (result instanceof Err) {
-    throw new ParseError(source, result);
+    throw new ParseErrorImpl(source, result);
   }
   return result;
 }
@@ -329,7 +339,9 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
   };
 }
 
-export const noop: Parser<null> = () => null;
+export function noop(): Parser<null> {
+  return null;
+}
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;

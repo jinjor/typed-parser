@@ -38,7 +38,8 @@ import {
   bracedSep,
   guard,
   sepUntil1,
-  manyUntil
+  manyUntil,
+  isParseError
 } from "../src/index";
 import * as assert from "assert";
 
@@ -53,7 +54,7 @@ function succeed<A>(parser: Parser<A>, source: string, expect?: A): void {
       );
     }
   } catch (e) {
-    if (e instanceof ParseError) {
+    if (isParseError(e)) {
       throw new Error(e.explain());
     }
     throw e;
@@ -71,7 +72,7 @@ function fail<A>(parser: Parser<A>, source: string, offset = 0): void {
   if (error === undefined) {
     throw new Error("Unexpectedly succeeded: " + JSON.stringify(value));
   }
-  if (!(error instanceof ParseError)) {
+  if (!isParseError(error)) {
     throw new Error("Unexpected error type: " + JSON.stringify(error));
   }
   if (error.offset !== offset) {
@@ -87,7 +88,7 @@ function failWithNonParseError<A>(parser: Parser<A>, source: string) {
   try {
     run(parser, source);
   } catch (e) {
-    assert(!(e instanceof ParseError));
+    assert(!isParseError(e));
   }
 }
 
