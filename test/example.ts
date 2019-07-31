@@ -29,8 +29,10 @@ import {
 import * as util from "util";
 import { readFileSync } from "fs";
 import * as assert from "assert";
+import { json_sample1k } from "./json1k";
 
-describe("Examples", () => {
+describe("Examples", function() {
+  this.timeout(50000);
   it("template", () => {
     type Variable = { name: string[]; range: Range };
     type Item = string | Variable;
@@ -99,18 +101,48 @@ describe("Examples", () => {
 
     compareJSON(__dirname + "/../package.json");
     compareJSON(__dirname + "/../package-lock.json");
+    compareJSON("1k sample", json_sample1k);
 
-    function compareJSON(file: string) {
+    function compareJSON(file: string, source?: string) {
+      const count = 1000;
       console.log(`comparing ${file} ...`);
-      const source = readFileSync(file, "utf8");
+      source = source || readFileSync(file, "utf8");
+      let ast;
+      let ast2;
       const s1 = Date.now();
-      const ast = run(json, source);
+      for (let i = 0; i < count; i++) {
+        ast = run(json, source);
+      }
       const e1 = Date.now();
       const s2 = Date.now();
-      const ast2 = JSON.parse(source);
+      for (let i = 0; i < count; i++) {
+        ast2 = JSON.parse(source);
+      }
       const e2 = Date.now();
-      console.log(`  typed-parser: ${e1 - s1}ms`);
-      console.log(`  native parser: ${e2 - s2}ms`);
+      console.log(`  typed-parser: ${(e1 - s1) / count}ms`);
+      console.log(`  native parser: ${(e2 - s2) / count}ms`);
+      assert.deepEqual(ast2, ast);
+      console.log();
+    }
+    function compareJSON2(file: string, source?: string) {
+      console.log(`comparing ${file} ...`);
+      source = source || readFileSync(file, "utf8");
+      let ast;
+      let ast2;
+      const s1 = Date.now();
+      let op1 = 0;
+      while (Date.now() - s1 < 1000) {
+        ast = run(json, source);
+        op1++;
+      }
+      const s2 = Date.now();
+      let op2 = 0;
+      while (Date.now() - s2 < 1000) {
+        ast2 = JSON.parse(source);
+        op2++;
+      }
+      console.log(`  typed-parser: ${op1}ops/s`);
+      console.log(`  native parser: ${op2}ops/s`);
       assert.deepEqual(ast2, ast);
       console.log();
     }
