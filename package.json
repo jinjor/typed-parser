@@ -5,12 +5,13 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && npm run gendoc",
     "nyc": "nyc mocha -r ts-node/register -r source-map-support/register",
     "test": "npm run test:parser && npm run test:example && npm run test:format",
     "test:parser": "npm run nyc -- test/parser.ts",
     "test:example": "npm run nyc -- test/example.ts",
     "test:format": "prettier --check src/*.ts test/*.ts README.md",
+    "gendoc": "ts-node test/gendoc.ts",
     "prepublishOnly": "npm run build"
   },
   "author": "Yosuke Torii",

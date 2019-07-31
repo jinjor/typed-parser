@@ -1,0 +1,83 @@
+
+<style>html, body, pre { margin:0; padding:0; } </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.9/styles/tomorrow-night.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.9/highlight.min.js"></script>
+<script
+ charset="UTF-8"
+ src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.9/languages/typescript.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+<pre><code class="typescript">export interface Position {
+    row: number;
+    column: number;
+}
+export interface Range {
+    start: Position;
+    end: Position;
+}
+export interface ParseError extends Error {
+    offset: number;
+    position: Position;
+    explain(): string;
+}
+export declare function isParseError(e: any): e is ParseError;
+export declare function calcPosition(source: string, offset: number): Position;
+declare class Err {
+    message: string;
+    scope: Scope;
+    offset: number;
+    constructor(context: Context, message: string);
+}
+declare class Scope {
+    offset: number;
+    name: string;
+    parent?: Scope;
+    constructor(offset: number, name: string, parent?: Scope);
+}
+declare class Context {
+    offset: number;
+    scope: Scope;
+}
+export declare type Parser&lt;A&gt; = (source: string, context: Context) =&gt; A | Err;
+export declare function run&lt;A&gt;(parser: Parser&lt;A&gt;, source: string): A;
+export declare function seq&lt;A extends Array&lt;any&gt;, B&gt;(map: (...args: {
+    [I in keyof A]: A[I];
+}) =&gt; B, ...parsers: {
+    [I in keyof A]: Parser&lt;A[I]&gt;;
+}): Parser&lt;B&gt;;
+export declare function $null(..._: unknown[]): null;
+export declare function $1&lt;A&gt;(a: A): A;
+export declare function $2&lt;A&gt;(_1: any, a: A): A;
+export declare function $3&lt;A&gt;(_1: any, _2: any, a: A): A;
+export declare function map&lt;A, B&gt;(f: (a: A, toError: (message: string) =&gt; Err) =&gt; B | Err, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+export declare function mapWithRange&lt;A, B&gt;(f: (value: A, range: Range, toError: (message: string) =&gt; Err) =&gt; B, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+export declare const end: Parser&lt;null&gt;;
+export declare function oneOf&lt;A&gt;(...parsers: Parser&lt;A&gt;[]): Parser&lt;A&gt;;
+export declare function guard&lt;A&gt;(guarder: Parser&lt;A&gt;, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+export declare function attempt&lt;A&gt;(parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+export declare function withContext&lt;A&gt;(name: string, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+export declare function lazy&lt;A&gt;(getParser: () =&gt; Parser&lt;A&gt;): Parser&lt;A&gt;;
+export declare function match(regexString: string): Parser&lt;string&gt;;
+export declare function skip(regexString: string): Parser&lt;null&gt;;
+export declare function expectString(s: string, name?: string): Parser&lt;null&gt;;
+export declare function stringBefore(regexString: string): Parser&lt;string&gt;;
+export declare function stringUntil(regexString: string): Parser&lt;string&gt;;
+export declare function stringBeforeEndOr(regexString: string): Parser&lt;string&gt;;
+export declare function noop(): Parser&lt;null&gt;;
+export declare function constant&lt;T&gt;(t: T): Parser&lt;T&gt;;
+export declare function todo&lt;A&gt;(name: string): Parser&lt;A&gt;;
+export declare function many&lt;A&gt;(itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function sepBy&lt;A&gt;(separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function sepBy1&lt;A&gt;(separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function manyUntil&lt;A&gt;(end: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function sepUntil&lt;A&gt;(end: Parser&lt;unknown&gt;, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function sepUntil1&lt;A&gt;(end: Parser&lt;unknown&gt;, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export declare function symbol(s: string): Parser&lt;null&gt;;
+export declare function keyword&lt;A = null&gt;(s: string, value?: A): Parser&lt;A&gt;;
+export declare function int(regexString: string): Parser&lt;number&gt;;
+export declare function float(regexString: string): Parser&lt;number&gt;;
+export declare const whitespace: Parser&lt;null&gt;;
+export declare const _: Parser&lt;null&gt;;
+export declare function braced&lt;A&gt;(start: string, end: string, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+export declare function bracedSep&lt;A&gt;(start: string, end: string, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+export {};
+</code></pre>

@@ -8,7 +8,7 @@
     "noImplicitAny": true,
     "strictNullChecks": false,
     "declaration": true,
-    "removeComments": true,
+    "removeComments": false,
     "noUnusedLocals": false,
     "noImplicitReturns": true,
     "listEmittedFiles": false,

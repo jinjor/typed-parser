@@ -1,12 +1,12 @@
-export type Position = {
+export interface Position {
   row: number;
   column: number;
-};
+}
 
-export type Range = {
+export interface Range {
   start: Position;
   end: Position;
-};
+}
 
 export interface ParseError extends Error {
   offset: number;
@@ -481,9 +481,9 @@ export function float(regexString: string): Parser<number> {
   }, match(regexString));
 }
 
-export const whitespace = skip("\\s*");
+export const whitespace: Parser<null> = skip("\\s*");
 
-export const _ = whitespace;
+export const _: Parser<null> = whitespace;
 
 export function braced<A>(
   start: string,
