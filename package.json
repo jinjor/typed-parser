@@ -1,6 +1,6 @@
 {
   "name": "typed-parser",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A parser library for TypeScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,5 +26,11 @@
     "ts-node": "^8.3.0",
     "typescript": "^3.5.3"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "repository": "github:jinjor/typed-parser",
+  "keywords": [
+    "parser",
+    "parser-combinator",
+    "typescript"
+  ]
 }

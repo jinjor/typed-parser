@@ -4,10 +4,14 @@
 
 A parser library for TypeScript, inspired by elm/parser and Parsec(Haskell).
 
+```shell
+$ npm i typed-parser
+```
+
 ## Usage
 
 - [API](https://jinjor.github.io/typed-parser/)
-- [Example](./test/example.ts)
+- [Example](https://github.com/jinjor/typed-parser/blob/master/test/example.ts)
 
 ## LICENSE
 
