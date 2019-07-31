@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync } from "fs";
 
-const dts = readFileSync(__dirname + "/../dist/index.d.ts", "utf8");
+const dts = readFileSync(__dirname + "/../dist/index.d.ts", "utf8").replace(
+  /\/\*\*/g,
+  "\n/**"
+);
 const escaped = dts
   .replace(/&/g, "&amp;")
   .replace(/\"/g, "&quot;")

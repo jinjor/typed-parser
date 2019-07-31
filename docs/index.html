@@ -6,19 +6,37 @@
  charset="UTF-8"
  src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.9/languages/typescript.min.js"></script>
 <script>hljs.initHighlightingOnLoad();</script>
-<pre><code class="typescript">export interface Position {
+<pre><code class="typescript">
+/**
+ * The source location.
+ */
+export interface Position {
     row: number;
     column: number;
 }
+
+/**
+ * Location range of the source.
+ * (See also `mapWithRange()`)
+ */
 export interface Range {
     start: Position;
     end: Position;
 }
+
+/**
+ * This error is thrown by `run()` when the parser fails.
+ * Unexpected errors (e.g. &quot;undefined is not a function&quot;) won&#39;t be wraped with this error.
+ */
 export interface ParseError extends Error {
     offset: number;
     position: Position;
     explain(): string;
 }
+
+/**
+ * Judge if an error (or anything else) is a ParseError.
+ */
 export declare function isParseError(e: any): e is ParseError;
 export declare function calcPosition(source: string, offset: number): Position;
 declare class Err {
@@ -37,47 +55,210 @@ declare class Context {
     offset: number;
     scope: Scope;
 }
+
+/**
+ * `Parser&lt;A&gt;` returns `A` when it succeeds.
+ */
 export declare type Parser&lt;A&gt; = (source: string, context: Context) =&gt; A | Err;
+
+/**
+ * Run a parser. It throws ParseError when it fails.
+ */
 export declare function run&lt;A&gt;(parser: Parser&lt;A&gt;, source: string): A;
+
+/**
+ * Apply given parsers and convert the results to another value.
+ */
 export declare function seq&lt;A extends Array&lt;any&gt;, B&gt;(map: (...args: {
     [I in keyof A]: A[I];
 }) =&gt; B, ...parsers: {
     [I in keyof A]: Parser&lt;A[I]&gt;;
 }): Parser&lt;B&gt;;
+
+/**
+ * `seq($null, ...)` will return null.
+ */
 export declare function $null(..._: unknown[]): null;
+
+/**
+ * `seq($1, ...)` will return the first result.
+ */
 export declare function $1&lt;A&gt;(a: A): A;
+
+/**
+ * `seq($2, ...)` will return the second result.
+ */
 export declare function $2&lt;A&gt;(_1: any, a: A): A;
+
+/**
+ * `seq($3, ...)` will return the third result.
+ */
 export declare function $3&lt;A&gt;(_1: any, _2: any, a: A): A;
+
+/**
+ * Apply given parser and convert the result to another value.
+ */
 export declare function map&lt;A, B&gt;(f: (a: A, toError: (message: string) =&gt; Err) =&gt; B | Err, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+
+/**
+ * Apply given parser and convert the result to another value along with the source location.
+ */
 export declare function mapWithRange&lt;A, B&gt;(f: (value: A, range: Range, toError: (message: string) =&gt; Err) =&gt; B, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+
+/**
+ * Only succeeds when position is at the end of the source.
+ */
 export declare const end: Parser&lt;null&gt;;
+
+/**
+ * Succeeds when one of given parsers succeeds.
+ * Note that no fallback will occur if any one of them consumes even a single character.
+ * (See also `attempt()`)
+ */
 export declare function oneOf&lt;A&gt;(...parsers: Parser&lt;A&gt;[]): Parser&lt;A&gt;;
+
+/**
+ * If the first parser fails, the second will be applied.
+ * It looks similar to `oneOf()`, but it will say nothing about the first error when the second fails.
+ */
 export declare function guard&lt;A&gt;(guarder: Parser&lt;A&gt;, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * When the given parser fails, offset will return to the first position
+ * it started parsing, even if it consists of multiple parsers.
+ * This can be used to force fallback in `oneOf()`, but overuse can lead to poor performance.
+ */
 export declare function attempt&lt;A&gt;(parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * Add helpful name (ex. array, object, ...) to given parser.
+ */
 export declare function withContext&lt;A&gt;(name: string, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * Recursively declared parsers cause infinite loop (and stack overflow).
+ * To avoid that, `lazy()` gets the parser only when it is needed.
+ */
 export declare function lazy&lt;A&gt;(getParser: () =&gt; Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * Get string that matched the regex.
+ */
 export declare function match(regexString: string): Parser&lt;string&gt;;
+
+/**
+ * Skip a part of source that matched the regex.
+ */
 export declare function skip(regexString: string): Parser&lt;null&gt;;
+
+/**
+ * Succeeds if the rest of source starts with the given string.
+ * The optional name indicates what that string means.
+ */
 export declare function expectString(s: string, name?: string): Parser&lt;null&gt;;
+
+/**
+ * Gets the string before the given pattern but does not consume the last.
+ */
 export declare function stringBefore(regexString: string): Parser&lt;string&gt;;
+
+/**
+ * Get the string before the given pattern and consume the last.
+ */
 export declare function stringUntil(regexString: string): Parser&lt;string&gt;;
+
+/**
+ * Gets the string before the given pattern or the end of the source.
+ */
 export declare function stringBeforeEndOr(regexString: string): Parser&lt;string&gt;;
+
+/**
+ * Do nothing
+ */
 export declare function noop(): Parser&lt;null&gt;;
+
+/**
+ * Always succeed and return the constant value.
+ */
 export declare function constant&lt;T&gt;(t: T): Parser&lt;T&gt;;
+
+/**
+ * This can be used when the implementation is not done.
+ */
 export declare function todo&lt;A&gt;(name: string): Parser&lt;A&gt;;
+
+/**
+ * Parse many items while it is possible.
+ * If the item parser *partially* succeeds, then the entire parser fails.
+ * (See also `attempt()`)
+ */
 export declare function many&lt;A&gt;(itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Parse zero or more items with given separator.
+ */
 export declare function sepBy&lt;A&gt;(separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Parse one or more items with given separator.
+ */
 export declare function sepBy1&lt;A&gt;(separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Parse many items until something.
+ */
 export declare function manyUntil&lt;A&gt;(end: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Parse zero or more items with given separator until something.
+ */
 export declare function sepUntil&lt;A&gt;(end: Parser&lt;unknown&gt;, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Parse one or more items with given separator until something.
+ */
 export declare function sepUntil1&lt;A&gt;(end: Parser&lt;unknown&gt;, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
+
+/**
+ * Expect a symbol like `,`, `&quot;`, `[`, etc.
+ */
 export declare function symbol(s: string): Parser&lt;null&gt;;
+
+/**
+ * Expect a keyword like `true`, `null`, `for`, etc.
+ * Return the second argument if provided.
+ */
 export declare function keyword&lt;A = null&gt;(s: string, value?: A): Parser&lt;A&gt;;
+
+/**
+ * Parse integer with given regex.
+ */
 export declare function int(regexString: string): Parser&lt;number&gt;;
+
+/**
+ * Parse float number with given regex.
+ */
 export declare function float(regexString: string): Parser&lt;number&gt;;
+
+/**
+ * Skip whitespace (`\\s*`)
+ */
 export declare const whitespace: Parser&lt;null&gt;;
+
+/**
+ * Alias of `whitespace`
+ */
 export declare const _: Parser&lt;null&gt;;
-export declare function braced&lt;A&gt;(start: string, end: string, parser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * Parse something between symbols with padding (`whitespace`).
+ * (Note: should be renamed to `between`)
+ */
+export declare function braced&lt;A&gt;(start: string, end: string, itemParser: Parser&lt;A&gt;): Parser&lt;A&gt;;
+
+/**
+ * Parse something like `[ 1, 2, 3 ]`
+ */
 export declare function bracedSep&lt;A&gt;(start: string, end: string, separator: Parser&lt;unknown&gt;, itemParser: Parser&lt;A&gt;): Parser&lt;A[]&gt;;
 export {};
 </code></pre>

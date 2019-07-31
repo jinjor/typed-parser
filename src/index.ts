@@ -1,19 +1,33 @@
+/**
+ * The source location.
+ */
 export interface Position {
   row: number;
   column: number;
 }
 
+/**
+ * Location range of the source.
+ * (See also `mapWithRange()`)
+ */
 export interface Range {
   start: Position;
   end: Position;
 }
 
+/**
+ * This error is thrown by `run()` when the parser fails.
+ * Unexpected errors (e.g. "undefined is not a function") won't be wraped with this error.
+ */
 export interface ParseError extends Error {
   offset: number;
   position: Position;
   explain(): string;
 }
 
+/**
+ * Judge if an error (or anything else) is a ParseError.
+ */
 export function isParseError(e: any): e is ParseError {
   return e instanceof ParseErrorImpl;
 }
@@ -106,8 +120,14 @@ class Context {
   scope: Scope = new Scope(0, null);
 }
 
+/**
+ * `Parser<A>` returns `A` when it succeeds.
+ */
 export type Parser<A> = (source: string, context: Context) => A | Err;
 
+/**
+ * Run a parser. It throws ParseError when it fails.
+ */
 export function run<A>(parser: Parser<A>, source: string): A {
   const context = new Context();
   const result = parser(source, context);
@@ -117,6 +137,9 @@ export function run<A>(parser: Parser<A>, source: string): A {
   return result;
 }
 
+/**
+ * Apply given parsers and convert the results to another value.
+ */
 export function seq<A extends Array<any>, B>(
   map: (...args: { [I in keyof A]: A[I] }) => B,
   ...parsers: { [I in keyof A]: Parser<A[I]> }
@@ -135,22 +158,37 @@ export function seq<A extends Array<any>, B>(
   };
 }
 
+/**
+ * `seq($null, ...)` will return null.
+ */
 export function $null(..._: unknown[]): null {
   return null;
 }
 
+/**
+ * `seq($1, ...)` will return the first result.
+ */
 export function $1<A>(a: A): A {
   return a;
 }
 
+/**
+ * `seq($2, ...)` will return the second result.
+ */
 export function $2<A>(_1: any, a: A): A {
   return a;
 }
 
+/**
+ * `seq($3, ...)` will return the third result.
+ */
 export function $3<A>(_1: any, _2: any, a: A): A {
   return a;
 }
 
+/**
+ * Apply given parser and convert the result to another value.
+ */
 export function map<A, B>(
   f: (a: A, toError: (message: string) => Err) => B | Err,
   parser: Parser<A>
@@ -169,6 +207,9 @@ export function map<A, B>(
   };
 }
 
+/**
+ * Apply given parser and convert the result to another value along with the source location.
+ */
 export function mapWithRange<A, B>(
   f: (value: A, range: Range, toError: (message: string) => Err) => B,
   parser: Parser<A>
@@ -189,6 +230,9 @@ export function mapWithRange<A, B>(
   };
 }
 
+/**
+ * Only succeeds when position is at the end of the source.
+ */
 export const end: Parser<null> = (source, context) => {
   if (source.length !== context.offset) {
     return new Err(context, `Not the end of source`);
@@ -196,6 +240,11 @@ export const end: Parser<null> = (source, context) => {
   return null;
 };
 
+/**
+ * Succeeds when one of given parsers succeeds.
+ * Note that no fallback will occur if any one of them consumes even a single character.
+ * (See also `attempt()`)
+ */
 export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   return (source, context) => {
     const errors = [];
@@ -219,6 +268,10 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
   };
 }
 
+/**
+ * If the first parser fails, the second will be applied.
+ * It looks similar to `oneOf()`, but it will say nothing about the first error when the second fails.
+ */
 export function guard<A>(guarder: Parser<A>, parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const first = guarder(source, context);
@@ -229,6 +282,11 @@ export function guard<A>(guarder: Parser<A>, parser: Parser<A>): Parser<A> {
   };
 }
 
+/**
+ * When the given parser fails, offset will return to the first position
+ * it started parsing, even if it consists of multiple parsers.
+ * This can be used to force fallback in `oneOf()`, but overuse can lead to poor performance.
+ */
 export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const originalOffset = context.offset;
@@ -241,15 +299,23 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
   };
 }
 
+/**
+ * Add helpful name (ex. array, object, ...) to given parser.
+ */
 export function withContext<A>(name: string, parser: Parser<A>): Parser<A> {
   return (source, context) => {
     context.scope = new Scope(context.offset, name, context.scope);
     const result = parser(source, context);
+    // TODO: "expect object" instead of "expect '{'"
     context.scope = context.scope.parent;
     return result;
   };
 }
 
+/**
+ * Recursively declared parsers cause infinite loop (and stack overflow).
+ * To avoid that, `lazy()` gets the parser only when it is needed.
+ */
 export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
   return (source, context) => {
     let parser = getParser();
@@ -260,6 +326,9 @@ export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
   };
 }
 
+/**
+ * Get string that matched the regex.
+ */
 export function match(regexString: string): Parser<string> {
   const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
@@ -275,6 +344,9 @@ export function match(regexString: string): Parser<string> {
   };
 }
 
+/**
+ * Skip a part of source that matched the regex.
+ */
 export function skip(regexString: string): Parser<null> {
   const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
@@ -286,6 +358,10 @@ export function skip(regexString: string): Parser<null> {
   };
 }
 
+/**
+ * Succeeds if the rest of source starts with the given string.
+ * The optional name indicates what that string means.
+ */
 export function expectString(s: string, name = "string"): Parser<null> {
   return (source, context) => {
     if (source.startsWith(s, context.offset)) {
@@ -314,14 +390,23 @@ function _stringUntil(
   };
 }
 
+/**
+ * Gets the string before the given pattern but does not consume the last.
+ */
 export function stringBefore(regexString: string): Parser<string> {
   return _stringUntil(regexString, true);
 }
 
+/**
+ * Get the string before the given pattern and consume the last.
+ */
 export function stringUntil(regexString: string): Parser<string> {
   return _stringUntil(regexString, false);
 }
 
+/**
+ * Gets the string before the given pattern or the end of the source.
+ */
 export function stringBeforeEndOr(regexString: string): Parser<string> {
   const regexp = new RegExp(regexString, "g");
   return (source, context) => {
@@ -339,18 +424,32 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
   };
 }
 
+/**
+ * Do nothing
+ */
 export function noop(): Parser<null> {
   return null;
 }
 
+/**
+ * Always succeed and return the constant value.
+ */
 export function constant<T>(t: T): Parser<T> {
   return () => t;
 }
 
+/**
+ * This can be used when the implementation is not done.
+ */
 export function todo<A>(name: string): Parser<A> {
   throw new Error(`Parser "${name}" is not implemented yet.`);
 }
 
+/**
+ * Parse many items while it is possible.
+ * If the item parser *partially* succeeds, then the entire parser fails.
+ * (See also `attempt()`)
+ */
 export function many<A>(itemParser: Parser<A>): Parser<A[]> {
   return (source, context) => {
     const items = [];
@@ -376,6 +475,9 @@ function nextItem<A>(
   return seq($2, attempt(separator), itemParser);
 }
 
+/**
+ * Parse zero or more items with given separator.
+ */
 export function sepBy<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
@@ -393,6 +495,9 @@ export function sepBy<A>(
   );
 }
 
+/**
+ * Parse one or more items with given separator.
+ */
 export function sepBy1<A>(
   separator: Parser<unknown>,
   itemParser: Parser<A>
@@ -407,6 +512,9 @@ export function sepBy1<A>(
   );
 }
 
+/**
+ * Parse many items until something.
+ */
 export function manyUntil<A>(
   end: Parser<unknown>,
   itemParser: Parser<A>
@@ -427,6 +535,9 @@ export function manyUntil<A>(
   };
 }
 
+/**
+ * Parse zero or more items with given separator until something.
+ */
 export function sepUntil<A>(
   end: Parser<unknown>,
   separator: Parser<unknown>,
@@ -435,6 +546,9 @@ export function sepUntil<A>(
   return guard(map(_ => [], end), sepUntil1(end, separator, itemParser));
 }
 
+/**
+ * Parse one or more items with given separator until something.
+ */
 export function sepUntil1<A>(
   end: Parser<unknown>,
   separator: Parser<unknown>,
@@ -450,10 +564,17 @@ export function sepUntil1<A>(
   );
 }
 
+/**
+ * Expect a symbol like `,`, `"`, `[`, etc.
+ */
 export function symbol(s: string): Parser<null> {
   return expectString(s, "symbol");
 }
 
+/**
+ * Expect a keyword like `true`, `null`, `for`, etc.
+ * Return the second argument if provided.
+ */
 export function keyword<A = null>(s: string, value?: A): Parser<A> {
   if (value === undefined) {
     return expectString(s, "keyword");
@@ -461,6 +582,9 @@ export function keyword<A = null>(s: string, value?: A): Parser<A> {
   return map(_ => value, expectString(s, "keyword"));
 }
 
+/**
+ * Parse integer with given regex.
+ */
 export function int(regexString: string): Parser<number> {
   return map((s, toError) => {
     const n = parseInt(s);
@@ -471,6 +595,9 @@ export function int(regexString: string): Parser<number> {
   }, match(regexString));
 }
 
+/**
+ * Parse float number with given regex.
+ */
 export function float(regexString: string): Parser<number> {
   return map((s, toError) => {
     const n = parseFloat(s);
@@ -481,18 +608,31 @@ export function float(regexString: string): Parser<number> {
   }, match(regexString));
 }
 
+/**
+ * Skip whitespace (`\\s*`)
+ */
 export const whitespace: Parser<null> = skip("\\s*");
 
+/**
+ * Alias of `whitespace`
+ */
 export const _: Parser<null> = whitespace;
 
+/**
+ * Parse something between symbols with padding (`whitespace`).
+ * (Note: should be renamed to `between`)
+ */
 export function braced<A>(
   start: string,
   end: string,
-  parser: Parser<A>
+  itemParser: Parser<A>
 ): Parser<A> {
-  return seq($3, symbol(start), _, parser, _, symbol(end));
+  return seq($3, symbol(start), _, itemParser, _, symbol(end));
 }
 
+/**
+ * Parse something like `[ 1, 2, 3 ]`
+ */
 export function bracedSep<A>(
   start: string,
   end: string,
