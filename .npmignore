@@ -1,0 +1,6 @@
+.prettierignore
+tsconfig.json
+tslint.json
+test/
+src/
+docs/

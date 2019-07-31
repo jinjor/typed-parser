@@ -1,9 +1,9 @@
 {
   "name": "typed-parser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A parser library for TypeScript",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p . && npm run gendoc",
     "nyc": "nyc mocha -r ts-node/register -r source-map-support/register",
