@@ -7,7 +7,6 @@ import {
   oneOf,
   run,
   Parser,
-  sepBy,
   lazy,
   sepBy1,
   many,
@@ -24,7 +23,8 @@ import {
   braced,
   withContext,
   ParseError,
-  bracedSep
+  bracedSep,
+  $null
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -52,6 +52,7 @@ describe("Examples", () => {
   it("JSON", () => {
     const num = float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?");
     const bool = oneOf(mapKeyword("true", true), mapKeyword("false", false));
+    const _null = mapKeyword("null", null);
     const escape = seq(
       $2,
       symbol("\\"),
@@ -72,8 +73,8 @@ describe("Examples", () => {
       oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
     );
     const str = seq($2, symbol('"'), strInner, symbol('"'), _);
-    const itemSep = seq(_ => null, symbol(","), _);
-    const fieldSep = seq(_ => null, symbol(":"), _);
+    const itemSep = seq($null, symbol(","), _);
+    const fieldSep = seq($null, symbol(":"), _);
     const field = seq((k, _, v) => [k, v], str, fieldSep, lazy(() => val), _);
     function toObject(kvs: [string, unknown][]): object {
       const obj: any = {};
@@ -82,23 +83,17 @@ describe("Examples", () => {
       }
       return obj;
     }
-    // const object = withContext(
-    //   "object",
-    //   braced("{", "}", map(sepBy(itemSep, field), toObject))
-    // );
     const object = withContext(
       "object",
       map(bracedSep("{", "}", itemSep, field), toObject)
     );
-    // const items = sepBy(itemSep, seq($1, lazy(() => val), _));
-    // const array = withContext("array", braced("[", "]", items));
     const array = withContext(
       "array",
       bracedSep("[", "]", itemSep, lazy(() => val))
     );
     const val: Parser<unknown> = withContext(
       "value",
-      oneOf<unknown>(object, array, str, num, bool)
+      oneOf<unknown>(object, array, str, num, bool, _null)
     );
     const json = seq($2, _, val, _, end);
 
@@ -123,7 +118,6 @@ describe("Examples", () => {
       const source = readFileSync(__dirname + "/broken.json", "utf8");
       run(json, source);
     } catch (e) {
-      // console.log(util.inspect(e, { depth: 10, colors: true }));
       console.log((e as ParseError).explain());
       console.log();
     }

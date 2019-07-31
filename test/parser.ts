@@ -13,7 +13,6 @@ import {
   ParseError,
   skip,
   constant,
-  assertConsumed,
   seq,
   oneOf,
   attempt,
@@ -37,7 +36,10 @@ import {
   sepUntil,
   calcPosition,
   $null,
-  bracedSep
+  bracedSep,
+  guard,
+  sepUntil1,
+  manyUntil
 } from "../src/index";
 import * as assert from "assert";
 
@@ -193,12 +195,6 @@ describe("Core", () => {
     }
     assert(!succeeded, "todo() Unexpectedly succeed.");
   });
-  it("assertConsumed", () => {
-    succeed(assertConsumed(match("a")), "aa", "a");
-    succeed(assertConsumed(match("a+")), "aa", "aa");
-    fail(assertConsumed(match("a+")), "");
-    fail(assertConsumed(match("a*")), "");
-  });
   it("seq", () => {
     succeed(seq($1, match("a"), noop), "ab", "a");
     succeed(seq($2, noop, match("a"), noop), "ab", "a");
@@ -216,6 +212,12 @@ describe("Core", () => {
       "{ { 1 } }",
       4
     );
+  });
+  it("guard", () => {
+    succeed(guard(match("a"), match("b")), "a", "a");
+    succeed(guard(match("a"), match("b")), "b", "b");
+    fail(guard(match("a"), match("b")), "c");
+    fail(guard(seq($1, match("a"), match("a")), match("ab")), "ab", 1);
   });
   it("attempt", () => {
     const atA = seq($2, symbol("@"), match("a"));
@@ -242,9 +244,23 @@ describe("Core", () => {
     succeed(many(int("\\d")), "123", [1, 2, 3]);
     succeed(many(int("\\d")), "a1", []);
     succeed(many(int("\\d")), "", []);
+    succeed(many(match(".+")), "foo", ["foo"]);
     succeed(many(match(".*")), "foo", ["foo"]);
     succeed(many(attempt(seq(_ => 0, match("a"), match("b")))), "ac", []);
     fail(many(seq(_ => 0, match("a"), match("b"))), "ac", 1);
+  });
+  it("manyUntil", () => {
+    succeed(manyUntil(symbol("]"), int("\\d")), "]", []);
+    succeed(manyUntil(symbol("]"), int("\\d")), "123]", [1, 2, 3]);
+    fail(manyUntil(symbol("]"), int("\\d")), "123 ]", 3);
+    succeed(manyUntil(symbol("]"), int("\\d")), "123]", [1, 2, 3]);
+    fail(manyUntil(symbol("]"), int("\\d")), "a1]", 0);
+    fail(manyUntil(symbol("]"), int("\\d")), "", 0);
+    succeed(manyUntil(symbol(">"), match("[^>]+")), "foo>", ["foo"]);
+    succeed(manyUntil(symbol(">"), match("[^>]*")), "foo>", ["foo"]);
+    succeed(manyUntil(symbol(">"), match("[^>]+")), ">", []);
+    succeed(manyUntil(symbol(">"), match("[^>]*")), ">", []);
+    fail(manyUntil(symbol("]"), seq(_ => 0, match("a"), match("b"))), "ac]", 1);
   });
   it("sepBy", () => {
     succeed(sepBy(symbol(","), int("\\d")), "", []);
@@ -305,6 +321,17 @@ describe("Core", () => {
     fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "", 0);
     fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "1", 1);
     fail(sepUntil(symbol("]"), symbol(","), int("\\d")), "1,2", 3);
+  });
+  it("sepUntil1", () => {
+    fail(sepUntil1(symbol("]"), symbol(","), int("\\d")), "]", 0);
+    succeed(sepUntil1(symbol("]"), symbol(","), int("\\d")), "1]", [1]);
+    succeed(sepUntil1(symbol("]"), symbol(","), int("\\d")), "1,2]", [1, 2]);
+    fail(sepUntil1(end, symbol(","), int("\\d")), "", 0);
+    succeed(sepUntil1(end, symbol(","), int("\\d")), "1", [1]);
+    succeed(sepUntil1(end, symbol(","), int("\\d")), "1,2", [1, 2]);
+    fail(sepUntil1(symbol("]"), symbol(","), int("\\d")), "", 0);
+    fail(sepUntil1(symbol("]"), symbol(","), int("\\d")), "1", 1);
+    fail(sepUntil1(symbol("]"), symbol(","), int("\\d")), "1,2", 3);
   });
   it("symbol", () => {
     succeed(symbol("!"), "!");

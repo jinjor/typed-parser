@@ -47,8 +47,10 @@ export class ParseError extends Error {
       text += `${String(r).padStart(5)}| ${line}\n`;
     }
     text += `${" ".repeat(6 + errorPos.column)}^\n`;
-    text += "Context:\n";
     let scope = this.error.scope;
+    if (scope.name) {
+      text += "Context:\n";
+    }
     while (scope && scope.name !== null) {
       const { row, column } = this.getPosition(scope.offset);
       text += `    at ${scope.name} (${row}:${column}) \n`;
@@ -153,9 +155,6 @@ export function map<A, B>(
       context.offset = originalOffset;
       return new Err(context, message);
     });
-    if (result2 instanceof Err) {
-      return result2;
-    }
     return result2;
   };
 }
@@ -176,9 +175,6 @@ export function mapWithRange<A, B>(
       context.offset = originalOffset;
       return new Err(context, message);
     });
-    if (result2 instanceof Err) {
-      return result2;
-    }
     return result2;
   };
 }
@@ -210,6 +206,16 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
       `None of ${parsers.length} parsers was successful`,
       errors
     );
+  };
+}
+
+export function guard<A>(guarder: Parser<A>, parser: Parser<A>): Parser<A> {
+  return (source, context) => {
+    const first = guarder(source, context);
+    if (!(first instanceof Err)) {
+      return first;
+    }
+    return parser(source, context);
   };
 }
 
@@ -281,32 +287,31 @@ export function expectString(s: string, name = "string"): Parser<null> {
   };
 }
 
+function _stringUntil(
+  regexString: string,
+  excludeLast: boolean
+): Parser<string> {
+  const regexp = new RegExp(regexString, "g");
+  return (source, context) => {
+    regexp.lastIndex = context.offset;
+    const result = regexp.exec(source);
+    if (!result) {
+      return new Err(context, `Did not match "${regexString}"`);
+    }
+    const s = source.slice(context.offset, result.index);
+    context.offset += s.length + (excludeLast ? 0 : result[0].length);
+    return s;
+  };
+}
+
 export function stringBefore(regexString: string): Parser<string> {
-  const regexp = new RegExp(regexString, "g");
-  return (source, context) => {
-    regexp.lastIndex = context.offset;
-    const result = regexp.exec(source);
-    if (!result) {
-      return new Err(context, `Did not match "${regexString}"`);
-    }
-    const s = source.slice(context.offset, result.index);
-    context.offset += s.length;
-    return s;
-  };
+  return _stringUntil(regexString, true);
 }
+
 export function stringUntil(regexString: string): Parser<string> {
-  const regexp = new RegExp(regexString, "g");
-  return (source, context) => {
-    regexp.lastIndex = context.offset;
-    const result = regexp.exec(source);
-    if (!result) {
-      return new Err(context, `Did not match "${regexString}"`);
-    }
-    const s = source.slice(context.offset, result.index);
-    context.offset += s.length + result[0].length;
-    return s;
-  };
+  return _stringUntil(regexString, false);
 }
+
 export function stringBeforeEndOr(regexString: string): Parser<string> {
   const regexp = new RegExp(regexString, "g");
   return (source, context) => {
@@ -324,7 +329,7 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
   };
 }
 
-export const noop: Parser<null> = (source: string, context: Context) => null;
+export const noop: Parser<null> = () => null;
 
 export function constant<T>(t: T): Parser<T> {
   return () => t;
@@ -334,33 +339,22 @@ export function todo<A>(name: string): Parser<A> {
   throw new Error(`Parser "${name}" is not implemented yet.`);
 }
 
-export function assertConsumed<A>(parser: Parser<A>): Parser<A> {
-  return (source, context) => {
-    const originalOffset = context.offset;
-    const result = parser(source, context);
-    if (result instanceof Err) {
-      return result;
-    }
-    if (context.offset === originalOffset) {
-      return new Err(context, "No string consumed");
-    }
-    return result;
-  };
-}
-
 export function many<A>(itemParser: Parser<A>): Parser<A[]> {
-  return oneOf(
-    seq(
-      (head, tail) => {
-        return [head, ...tail];
-        // tail.unshift(head);
-        // return tail;
-      },
-      assertConsumed(itemParser),
-      lazy(() => many(itemParser))
-    ),
-    constant([])
-  );
+  return (source, context) => {
+    const items = [];
+    while (true) {
+      const originalOffset = context.offset;
+      const result = itemParser(source, context);
+      if (originalOffset === context.offset) {
+        break;
+      }
+      if (result instanceof Err) {
+        return result;
+      }
+      items.push(result);
+    }
+    return items;
+  };
 }
 
 function nextItem<A>(
@@ -377,9 +371,8 @@ export function sepBy<A>(
   return oneOf(
     seq(
       (head, tail) => {
-        return [head, ...tail];
-        // tail.unshift(head);
-        // return tail;
+        tail.unshift(head);
+        return tail;
       },
       itemParser,
       many(nextItem(separator, itemParser))
@@ -394,7 +387,6 @@ export function sepBy1<A>(
 ): Parser<A[]> {
   return seq(
     (head, tail) => {
-      // return [head, ...tail];
       tail.unshift(head);
       return tail;
     },
@@ -403,42 +395,32 @@ export function sepBy1<A>(
   );
 }
 
-function sepUntilTail<A>(
+export function manyUntil<A>(
+  end: Parser<unknown>,
+  itemParser: Parser<A>
+): Parser<A[]> {
+  return (source, context) => {
+    const items = [];
+    while (true) {
+      if (!(end(source, context) instanceof Err)) {
+        break;
+      }
+      const result = itemParser(source, context);
+      if (result instanceof Err) {
+        return result;
+      }
+      items.push(result);
+    }
+    return items;
+  };
+}
+
+export function sepUntil<A>(
   end: Parser<unknown>,
   separator: Parser<unknown>,
   itemParser: Parser<A>
 ): Parser<A[]> {
-  // return oneOf(
-  //   seq(
-  //     (head, tail) => {
-  //       tail.unshift(head);
-  //       return tail;
-  //     },
-  //     nextItem(separator, itemParser),
-  //     lazy(() => sepUntilTail(end, separator, itemParser))
-  //   ),
-  //   map(end, _ => [])
-  // );
-  const itemParser2 = assertConsumed(itemParser);
-  return (source, context) => {
-    const items = [];
-    while (true) {
-      const result = separator(source, context);
-      if (result instanceof Err) {
-        const result = end(source, context);
-        if (result instanceof Err) {
-          return result;
-        }
-        break;
-      }
-      const result2 = itemParser2(source, context);
-      if (result2 instanceof Err) {
-        return result2;
-      }
-      items.push(result2);
-    }
-    return items;
-  };
+  return guard(map(end, _ => []), sepUntil1(end, separator, itemParser));
 }
 
 export function sepUntil1<A>(
@@ -452,16 +434,8 @@ export function sepUntil1<A>(
       return tail;
     },
     itemParser,
-    sepUntilTail(end, separator, itemParser)
+    manyUntil(end, seq($2, separator, itemParser))
   );
-}
-
-export function sepUntil<A>(
-  end: Parser<unknown>,
-  separator: Parser<unknown>,
-  itemParser: Parser<A>
-): Parser<A[]> {
-  return oneOf(map(end, _ => []), sepUntil1(end, separator, itemParser));
 }
 
 export function symbol(s: string): Parser<null> {

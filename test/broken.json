@@ -13,7 +13,7 @@
     "test:format": "prettier --check src/*.ts test/*.ts README.md",
     "prepublishOnly": "npm run build"
   },
-  "author": [, "Yosuke Torii"],
+  "author": [,"Yosuke Torii"],
   "license": "MIT",
   "devDependencies": {
     "@types/mocha": "^5.2.7",
