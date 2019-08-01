@@ -39,11 +39,10 @@ export interface ParseError extends Error {
  */
 export declare function isParseError(e: any): e is ParseError;
 export declare function calcPosition(source: string, offset: number): Position;
-declare class Err {
-    message: string;
+interface Failure {
     scope: Scope;
     offset: number;
-    constructor(context: Context, message: string);
+    message: string;
 }
 declare class Scope {
     offset: number;
@@ -59,7 +58,7 @@ declare class Context {
 /**
  * `Parser&lt;A&gt;` returns `A` when it succeeds.
  */
-export declare type Parser&lt;A&gt; = (source: string, context: Context) =&gt; A | Err;
+export declare type Parser&lt;A&gt; = (source: string, context: Context) =&gt; A | Failure;
 
 /**
  * Run a parser. It throws ParseError when it fails.
@@ -98,12 +97,12 @@ export declare function $3&lt;A&gt;(_1: any, _2: any, a: A): A;
 /**
  * Apply given parser and convert the result to another value.
  */
-export declare function map&lt;A, B&gt;(f: (a: A, toError: (message: string) =&gt; Err) =&gt; B | Err, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+export declare function map&lt;A, B&gt;(f: (a: A, toError: (message: string) =&gt; Failure) =&gt; B | Failure, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
 
 /**
  * Apply given parser and convert the result to another value along with the source location.
  */
-export declare function mapWithRange&lt;A, B&gt;(f: (value: A, range: Range, toError: (message: string) =&gt; Err) =&gt; B, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
+export declare function mapWithRange&lt;A, B&gt;(f: (value: A, range: Range, toError: (message: string) =&gt; Failure) =&gt; B, parser: Parser&lt;A&gt;): Parser&lt;B&gt;;
 
 /**
  * Only succeeds when position is at the end of the source.
@@ -153,9 +152,9 @@ export declare function skip(regexString: string): Parser&lt;null&gt;;
 
 /**
  * Succeeds if the rest of source starts with the given string.
- * The optional name indicates what that string means.
+ * The optional type indicates what that string means.
  */
-export declare function expectString(s: string, name?: string): Parser&lt;null&gt;;
+export declare function expectString(s: string, type?: string): Parser&lt;null&gt;;
 
 /**
  * Gets the string before the given pattern but does not consume the last.
