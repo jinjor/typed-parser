@@ -1,3 +1,5 @@
+import { isError } from "util";
+
 /**
  * The source location.
  */
@@ -34,7 +36,7 @@ export function isParseError(e: any): e is ParseError {
 
 class ParseErrorImpl extends Error implements ParseError {
   private positions = new Map<number, Position>();
-  constructor(private source: string, private error: Err) {
+  constructor(private source: string, private error: Failure) {
     super(error.message);
   }
   get offset(): number {
@@ -54,17 +56,49 @@ class ParseErrorImpl extends Error implements ParseError {
     const startPos = this.getPosition(this.error.scope.offset);
     const errorPos = this.position;
     const lines = this.source.split("\n").slice(startPos.row - 1, errorPos.row);
-    text += `${this.message} (${errorPos.row}:${errorPos.column})\n`;
-    function appendSubMessages(error: Err, indent: number): void {
-      if (error instanceof OneOfErr) {
+    function appendSubMessages(error: Failure | string, indent: number): void {
+      if (indent) {
+        text += " ".repeat(indent) + "- ";
+      }
+      if (typeof error === "string") {
+        text += error + "\n";
+        return;
+      }
+      if (error.message) {
+        const at = indent ? "" : ` at (${errorPos.row}:${errorPos.column})`;
+        text += `${error.message}${at}\n`;
+        return;
+      }
+      if (error instanceof ExpectOneOf) {
+        const pureExpects = [];
+        const others = [];
         for (const e of error.errors) {
-          const contextString = "";
-          text += `${" ".repeat(indent)}- ${e.message}${contextString}\n`;
-          appendSubMessages(e, indent + 2);
+          if (e instanceof Expect) {
+            pureExpects.push(e.name);
+          } else if (e instanceof ExpectOneOf) {
+            pureExpects.push(e.alias);
+          } else {
+            others.push(e);
+          }
+        }
+        const expectations =
+          "Expect " +
+          (pureExpects.length > 1 ? "one of " : "") +
+          pureExpects.join(", ") +
+          "\n";
+
+        if (!others.length) {
+          text += expectations;
+        } else {
+          text += `Multiple parsers were not successful\n`;
+          appendSubMessages(expectations, indent + 2);
+          for (const e of others) {
+            appendSubMessages(e, indent + 2);
+          }
         }
       }
     }
-    appendSubMessages(this.error, 2);
+    appendSubMessages(this.error, 0);
     text += "\n";
     for (let r = startPos.row; r <= errorPos.row; r++) {
       const line = lines[r - startPos.row];
@@ -92,18 +126,72 @@ export function calcPosition(source: string, offset: number): Position {
   return { row, column };
 }
 
-class Err {
-  public scope: Scope;
-  public offset: number;
-  constructor(context: Context, public message: string) {
+interface Failure {
+  scope: Scope;
+  offset: number;
+  message: string;
+}
+
+function isFailure(e: unknown | Failure): e is Failure {
+  return e instanceof AbstractFailure;
+}
+
+abstract class AbstractFailure implements Failure {
+  scope: Scope;
+  offset: number;
+  abstract message: string;
+  constructor(context: Context) {
     this.scope = context.scope;
     this.offset = context.offset;
   }
 }
 
-class OneOfErr extends Err {
-  constructor(context: Context, message: string, public errors: Err[]) {
-    super(context, message);
+class Expect extends AbstractFailure {
+  public alias: string = null;
+  constructor(context: Context, public what: string, public type: string) {
+    super(context);
+  }
+  get message(): string {
+    return `Expect ${this.name}`;
+  }
+  get name(): string {
+    return this.alias || `${this.type} \`${this.what}\``;
+  }
+}
+
+class NotFound extends AbstractFailure {
+  constructor(context: Context, public what: string, public name: string) {
+    super(context);
+  }
+  get message(): string {
+    return `${this.name} \`${this.what}\` not found`;
+  }
+}
+
+class ExpectEnd extends AbstractFailure {
+  constructor(context: Context) {
+    super(context);
+  }
+  get message(): string {
+    return `Expect the end of source`;
+  }
+}
+class CustomErr extends AbstractFailure {
+  constructor(context: Context, public message: string) {
+    super(context);
+  }
+}
+
+class ExpectOneOf extends AbstractFailure {
+  public alias: string = null;
+  constructor(context: Context, public errors: Failure[]) {
+    super(context);
+  }
+  get message(): string {
+    if (this.alias) {
+      return `Expected ${this.alias}`;
+    }
+    return null;
   }
 }
 
@@ -123,7 +211,7 @@ class Context {
 /**
  * `Parser<A>` returns `A` when it succeeds.
  */
-export type Parser<A> = (source: string, context: Context) => A | Err;
+export type Parser<A> = (source: string, context: Context) => A | Failure;
 
 /**
  * Run a parser. It throws ParseError when it fails.
@@ -131,7 +219,7 @@ export type Parser<A> = (source: string, context: Context) => A | Err;
 export function run<A>(parser: Parser<A>, source: string): A {
   const context = new Context();
   const result = parser(source, context);
-  if (result instanceof Err) {
+  if (isFailure(result)) {
     throw new ParseErrorImpl(source, result);
   }
   return result;
@@ -149,7 +237,7 @@ export function seq<A extends Array<any>, B>(
     for (let i = 0; i < parsers.length; i++) {
       const parser = parsers[i];
       const result = parser(source, context);
-      if (result instanceof Err) {
+      if (isFailure(result)) {
         return result;
       }
       values[i] = result;
@@ -190,18 +278,18 @@ export function $3<A>(_1: any, _2: any, a: A): A {
  * Apply given parser and convert the result to another value.
  */
 export function map<A, B>(
-  f: (a: A, toError: (message: string) => Err) => B | Err,
+  f: (a: A, toError: (message: string) => Failure) => B | Failure,
   parser: Parser<A>
 ): Parser<B> {
   return (source, context) => {
     const originalOffset = context.offset;
     const result = parser(source, context);
-    if (result instanceof Err) {
+    if (isFailure(result)) {
       return result;
     }
     const result2 = f(result, function toError(message) {
       context.offset = originalOffset;
-      return new Err(context, message);
+      return new CustomErr(context, message);
     });
     return result2;
   };
@@ -211,20 +299,20 @@ export function map<A, B>(
  * Apply given parser and convert the result to another value along with the source location.
  */
 export function mapWithRange<A, B>(
-  f: (value: A, range: Range, toError: (message: string) => Err) => B,
+  f: (value: A, range: Range, toError: (message: string) => Failure) => B,
   parser: Parser<A>
 ): Parser<B> {
   return (source, context) => {
     const originalOffset = context.offset;
     const start = calcPosition(source, context.offset);
     const result = parser(source, context);
-    if (result instanceof Err) {
+    if (isFailure(result)) {
       return result;
     }
     const end = calcPosition(source, context.offset - 1);
     const result2 = f(result, { start, end }, function toError(message) {
       context.offset = originalOffset;
-      return new Err(context, message);
+      return new CustomErr(context, message);
     });
     return result2;
   };
@@ -235,7 +323,7 @@ export function mapWithRange<A, B>(
  */
 export const end: Parser<null> = (source, context) => {
   if (source.length !== context.offset) {
-    return new Err(context, `Not the end of source`);
+    return new ExpectEnd(context);
   }
   return null;
 };
@@ -251,7 +339,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
     const originalOffset = context.offset;
     for (const parser of parsers) {
       const result = parser(source, context);
-      if (!(result instanceof Err)) {
+      if (!(result instanceof AbstractFailure)) {
         return result;
       }
       if (originalOffset === context.offset) {
@@ -260,11 +348,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
         return result;
       }
     }
-    return new OneOfErr(
-      context,
-      `None of ${parsers.length} parsers was successful`,
-      errors
-    );
+    return new ExpectOneOf(context, errors);
   };
 }
 
@@ -275,7 +359,7 @@ export function oneOf<A>(...parsers: Parser<A>[]): Parser<A> {
 export function guard<A>(guarder: Parser<A>, parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const first = guarder(source, context);
-    if (!(first instanceof Err)) {
+    if (!isFailure(first)) {
       return first;
     }
     return parser(source, context);
@@ -291,7 +375,7 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
   return (source, context) => {
     const originalOffset = context.offset;
     const result = parser(source, context);
-    if (result instanceof Err) {
+    if (isFailure(result)) {
       context.offset = originalOffset;
       return result;
     }
@@ -305,8 +389,14 @@ export function attempt<A>(parser: Parser<A>): Parser<A> {
 export function withContext<A>(name: string, parser: Parser<A>): Parser<A> {
   return (source, context) => {
     context.scope = new Scope(context.offset, name, context.scope);
+    const originalOffset = context.offset;
     const result = parser(source, context);
-    // TODO: "expect object" instead of "expect '{'"
+    if (
+      context.offset == originalOffset &&
+      (result instanceof Expect || result instanceof ExpectOneOf)
+    ) {
+      result.alias = name;
+    }
     context.scope = context.scope.parent;
     return result;
   };
@@ -339,7 +429,7 @@ export function match(regexString: string): Parser<string> {
       context.offset += s.length;
       return s;
     } else {
-      return new Err(context, `Did not match "${regexString}"`);
+      return new Expect(context, regexString, "pattern");
     }
   };
 }
@@ -360,15 +450,15 @@ export function skip(regexString: string): Parser<null> {
 
 /**
  * Succeeds if the rest of source starts with the given string.
- * The optional name indicates what that string means.
+ * The optional type indicates what that string means.
  */
-export function expectString(s: string, name = "string"): Parser<null> {
+export function expectString(s: string, type = "string"): Parser<null> {
   return (source, context) => {
     if (source.startsWith(s, context.offset)) {
       context.offset += s.length;
       return null;
     } else {
-      return new Err(context, `Could not find ${name} "${s}"`);
+      return new Expect(context, s, type);
     }
   };
 }
@@ -382,7 +472,7 @@ function _stringUntil(
     regexp.lastIndex = context.offset;
     const result = regexp.exec(source);
     if (!result) {
-      return new Err(context, `Did not match "${regexString}"`);
+      return new NotFound(context, regexString, "pattern");
     }
     const s = source.slice(context.offset, result.index);
     context.offset += s.length + (excludeLast ? 0 : result[0].length);
@@ -459,7 +549,7 @@ export function many<A>(itemParser: Parser<A>): Parser<A[]> {
       if (originalOffset === context.offset) {
         break;
       }
-      if (result instanceof Err) {
+      if (isFailure(result)) {
         return result;
       }
       items.push(result);
@@ -522,11 +612,11 @@ export function manyUntil<A>(
   return (source, context) => {
     const items = [];
     while (true) {
-      if (!(end(source, context) instanceof Err)) {
+      if (!isFailure(end(source, context))) {
         break;
       }
       const result = itemParser(source, context);
-      if (result instanceof Err) {
+      if (isFailure(result)) {
         return result;
       }
       items.push(result);

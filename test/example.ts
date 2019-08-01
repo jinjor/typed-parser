@@ -51,8 +51,11 @@ describe("Examples", function() {
   });
 
   it("JSON", () => {
-    const num = float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?");
-    const bool = oneOf(keyword("true", true), keyword("false", false));
+    const num = withContext("number", float("-?(0|[1-9][0-9]*)(\\.[0-9]+)?"));
+    const bool = withContext(
+      "boolean",
+      oneOf(keyword("true", true), keyword("false", false))
+    );
     const _null = keyword("null", null);
     const escape = seq(
       $2,
