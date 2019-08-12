@@ -39,7 +39,8 @@ import {
   guard,
   sepUntil1,
   manyUntil,
-  isParseError
+  isParseError,
+  matchMap
 } from "../src/index";
 import * as assert from "assert";
 
@@ -117,6 +118,17 @@ describe("Core", () => {
     succeed(match(".*"), "a\nb", "a\nb");
     fail(match("a+"), " a");
     fail(match("a+"), "");
+  });
+  it("matchMap", () => {
+    succeed(matchMap("a+", $1), "a", "a");
+    succeed(matchMap("(a)(b)", (ab, a, b) => [ab, a, b]), "ab", [
+      "ab",
+      "a",
+      "b"
+    ]);
+    succeed(matchMap(".*", $1), "a\nb", "a\nb");
+    fail(matchMap("a+", $1), " a");
+    fail(matchMap("a+", $1), "");
   });
   it("skip", () => {
     succeed(skip("a"), "a");

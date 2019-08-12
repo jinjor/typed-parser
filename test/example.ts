@@ -24,7 +24,8 @@ import {
   ParseError,
   bracedSep,
   $null,
-  keyword
+  keyword,
+  matchMap
 } from "../src/index";
 import * as util from "util";
 import { readFileSync } from "fs";
@@ -57,23 +58,28 @@ describe("Examples", function() {
       oneOf(keyword("true", true), keyword("false", false))
     );
     const _null = keyword("null", null);
-    const escape = seq(
-      $2,
-      symbol("\\"),
-      oneOf(
-        keyword('"', '"'),
-        keyword("\\", "\\"),
-        keyword("/", "/"),
-        keyword("b", "\b"),
-        keyword("f", "\f"),
-        keyword("n", "\n"),
-        keyword("r", "\r"),
-        keyword("t", "\t")
-      )
-    );
+    const escape = matchMap('\\\\(["\\/bfnrt]|u[0-9a-fA-F]{1,4})', (_, s) => {
+      switch (s[0]) {
+        case "b":
+          return "\b";
+        case "f":
+          return "\f";
+        case "n":
+          return "\n";
+        case "r":
+          return "\r";
+        case "t":
+          return "\t";
+        case "u":
+          return String.fromCharCode(parseInt(s.slice(1), 16));
+        default:
+          return s;
+      }
+    });
     const strInner: Parser<string> = seq(
       (s, tail) => s + tail,
       stringBefore('[\\\\"]'),
+      // match('[^\\\\"]*'),
       oneOf(seq((e, t) => e + t, escape, lazy(() => strInner)), constant(""))
     );
     const str = seq($2, symbol('"'), strInner, symbol('"'), _);
