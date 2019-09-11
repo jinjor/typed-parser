@@ -518,7 +518,7 @@ export function stringBeforeEndOr(regexString: string): Parser<string> {
  * Do nothing
  */
 export function noop(): Parser<null> {
-  return null;
+  return () => null;
 }
 
 /**
