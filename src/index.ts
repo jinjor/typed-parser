@@ -417,9 +417,19 @@ export function lazy<A>(getParser: () => Parser<A>): Parser<A> {
 }
 
 /**
- * Get string that matched the regex.
+ * Get string that has matched the regex.
  */
 export function match(regexString: string): Parser<string> {
+  return matchMap(regexString, $1);
+}
+
+/**
+ * Get string that has matched the regex and map the result.
+ */
+export function matchMap<A>(
+  regexString: string,
+  f: (...matches: string[]) => A
+): Parser<A> {
   const regexp = new RegExp(regexString, "smy");
   return (source, context) => {
     regexp.lastIndex = context.offset;
@@ -427,7 +437,7 @@ export function match(regexString: string): Parser<string> {
     if (result) {
       const s = result[0];
       context.offset += s.length;
-      return s;
+      return f(...result);
     } else {
       return new Expect(context, regexString, "pattern");
     }
@@ -715,9 +725,17 @@ export const _: Parser<null> = whitespace;
 export function braced<A>(
   start: string,
   end: string,
-  itemParser: Parser<A>
+  itemParser: Parser<A>,
+  whitespace: Parser<unknown> = _
 ): Parser<A> {
-  return seq($3, symbol(start), _, itemParser, _, symbol(end));
+  return seq(
+    $3,
+    symbol(start),
+    whitespace,
+    itemParser,
+    whitespace,
+    symbol(end)
+  );
 }
 
 /**
@@ -727,12 +745,13 @@ export function bracedSep<A>(
   start: string,
   end: string,
   separator: Parser<unknown>,
-  itemParser: Parser<A>
+  itemParser: Parser<A>,
+  whitespace: Parser<unknown> = _
 ): Parser<A[]> {
   return seq(
     $3,
     symbol(start),
-    _,
-    sepUntil(seq($null, _, symbol(end)), separator, itemParser)
+    whitespace,
+    sepUntil(seq($null, whitespace, symbol(end)), separator, itemParser)
   );
 }
